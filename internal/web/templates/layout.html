@@ -1,0 +1,207 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <script src="/static/pudl/pudl-theme.js"></script>
+  <link rel="stylesheet" href="/static/pudl/pudl.css">
+  <style>
+    main.page { max-width: 60rem; margin: 0 auto; padding: var(--space-5) var(--space-4); }
+    main.page > h1 { margin-top: var(--space-3); }
+    .page-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }
+    .form-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; }
+    .form-row .form-group { margin-bottom: 0; }
+    /* Source is shown character for character, so the monospace face's
+       ligatures (Cascadia Code joins |---| into one line) are off. */
+    textarea.source { min-height: 24rem; font-family: var(--mono); font-size: var(--text-sm); }
+    textarea.source, pre.source { font-variant-ligatures: none; }
+    pre.source { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .side-by-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); }
+    .side-by-side textarea.source { height: 100%; }
+    @media (max-width: 640px) { .side-by-side { grid-template-columns: 1fr; } }
+    /* A rendered document. PUDL has no component for running prose yet;
+       these rules cover what its other components do not, and should move
+       into PUDL when it has one. */
+    article.document { margin-top: var(--space-4); }
+    article.document .data-table { display: block; overflow-x: auto; width: max-content; max-width: 100%; margin-bottom: var(--space-4); }
+    article.document blockquote { margin: 0 0 var(--space-4); padding: var(--space-1) var(--space-4); border-inline-start: 3px solid var(--border); color: var(--text-muted); }
+    article.document li:has(> input[type="checkbox"]) { list-style: none; }
+    article.document li > input[type="checkbox"] { margin-inline: calc(-1 * var(--space-4)) var(--space-1); accent-color: var(--accent); }
+    article.document :not(pre) > code { font-family: var(--mono); font-size: .9em; padding: .1em .3em; border-radius: var(--radius-sm); background: var(--surface-alt); }
+  </style>
+  {{if .Canonical}}<link rel="canonical" href="{{.Canonical}}">{{end}}
+  {{if .Up}}<link rel="up" href="{{.Up}}">{{end}}
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">PUDL Desktop</a>
+    <div class="topbar-chrome">
+      <button class="theme-toggle" type="button" aria-label="Switch light and dark" onclick="pudlToggleTheme()"></button>
+    </div>
+  </header>
+  <main class="page">
+    {{if .Crumbs}}<nav class="path" aria-label="Location"><ol>
+      {{range .Crumbs}}<li><a href="{{.URL}}">{{.Name}}</a></li>{{end}}
+      <li><span aria-current="page">{{.Title}}</span></li>
+    </ol></nav>{{end}}
+{{end}}
+
+{{define "foot"}}
+  </main>
+</body>
+</html>
+{{end}}
+
+{{define "welcome"}}{{template "head" .}}
+  <h1>PUDL Desktop</h1>
+  <p>PUDL Desktop is a place to write and keep Markdown documents, built with the PUDL design language. It is at an early stage: today it keeps folders and Markdown files with their full history.</p>
+  <div class="card">
+    <h2 class="card-title">A temporary workspace</h2>
+    <p class="card-desc">A temporary workspace keeps your files on this desktop's server. It belongs to this browser alone, lasts {{.Lifetime}}, and holds up to {{.Quota}} of text. Nothing is shared, and everything is deleted when it expires.</p>
+    <form rel="{{rel "start"}}" method="post" action="/workspaces">
+      <input type="hidden" name="submission" value="{{.Submission}}">
+      <button class="btn btn-primary" type="submit">Start a temporary workspace</button>
+    </form>
+  </div>
+{{template "foot" .}}{{end}}
+
+{{define "folder"}}{{template "head" .}}
+  <h1>{{.Title}}</h1>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col" class="num">Revisions</th><th scope="col">Created</th></tr></thead>
+      <tbody>
+        {{range .Items}}<tr>
+          <td><span class="glyph" style="--glyph: var({{if eq .Entry.Kind "folder"}}--glyph-folder{{else}}--glyph-document{{end}})" aria-hidden="true"></span>
+            <a rel="item" href="{{.URL}}">{{.Entry.Name}}</a></td>
+          <td>{{if eq .Entry.Kind "folder"}}Folder{{else}}Document{{end}}</td>
+          <td class="num">{{if eq .Entry.Kind "file"}}{{.Entry.Latest}}{{end}}</td>
+          <td><time>{{when .Entry.Created}}</time></td>
+        </tr>{{else}}<tr class="data-table-empty"><td colspan="4">This folder is empty.</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+  <h2>New</h2>
+  {{if .Problem}}<div class="notice danger" role="alert"><div class="notice-content"><p class="notice-body">{{.Problem}}</p></div></div>{{end}}
+  <form rel="{{rel "create"}}" method="post" action="{{.Canonical}}/entries" class="form-row">
+    <input type="hidden" name="submission" value="{{.Submission}}">
+    <div class="form-group">
+      <label class="form-label" for="new-name">Name</label>
+      <input class="form-input" id="new-name" name="name" value="{{.Name}}" required {{if .Problem}}aria-invalid="true"{{end}} placeholder="notes.md">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="new-kind">Kind</label>
+      <select class="form-select" id="new-kind" name="kind">
+        <option value="file" {{if eq .Kind "file"}}selected{{end}}>Document</option>
+        <option value="folder" {{if eq .Kind "folder"}}selected{{end}}>Folder</option>
+      </select>
+    </div>
+    <button class="btn" type="submit">Create</button>
+  </form>
+{{template "foot" .}}{{end}}
+
+{{define "filelinks"}}
+  <div class="page-actions">
+    <a class="btn btn-primary" rel="edit-form" href="{{.Edit}}">Edit</a>
+    <a class="btn" rel="alternate" type="text/html" href="{{.Rendered}}">Read</a>
+    <a class="btn" rel="alternate" type="text/markdown" href="{{.Raw}}">Markdown source</a>
+    <a class="btn" rel="version-history" href="{{.History}}">Revisions</a>
+  </div>
+{{end}}
+
+{{define "file"}}{{template "head" .}}
+  <h1>{{.Title}}</h1>
+  {{template "filelinks" .}}
+  <table class="kv-table">
+    <tr><th>Revision</th><td><a rel="latest-version" href="{{.Latest}}">{{.File.Latest}}</a>, saved <time>{{when .Revision.Created}}</time></td></tr>
+    <tr><th>Size</th><td>{{size .Revision.Size}}</td></tr>
+    <tr><th>Created</th><td><time>{{when .File.Created}}</time></td></tr>
+    <tr><th>Address</th><td><a rel="canonical" href="{{.Canonical}}">{{.Canonical}}</a></td></tr>
+  </table>
+{{template "foot" .}}{{end}}
+
+{{define "edit"}}{{template "head" .}}
+  <h1>{{.Title}}</h1>
+  {{if .Problem}}<div class="notice danger" role="alert"><div class="notice-content"><p class="notice-body">{{.Problem}}</p></div></div>{{end}}
+  <form rel="{{rel "save"}}" method="post" action="{{.Canonical}}/revisions">
+    <input type="hidden" name="submission" value="{{.Submission}}">
+    <input type="hidden" name="base" value="{{.Base}}">
+    <div class="form-group">
+      <label class="form-label" for="text">Markdown, revision {{.Base}}</label>
+      <textarea class="form-textarea source" id="text" name="text" spellcheck="true">{{.Text}}</textarea>
+    </div>
+    <div class="page-actions">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <a class="btn" href="{{.Canonical}}">Cancel</a>
+    </div>
+  </form>
+{{template "foot" .}}{{end}}
+
+{{define "conflict"}}{{template "head" .}}
+  <h1>{{.Title}}</h1>
+  <div class="notice warn" role="alert"><div class="notice-content">
+    <p class="notice-title">The document changed while you were editing it.</p>
+    <p class="notice-body">You wrote against revision {{.Conflict.Base}}, and it is now at revision {{.Conflict.Latest}}. Your text has not been saved, and it is in the box on the right. Compare the two, change your text as you need, and save it against revision {{.Conflict.Latest}}, or leave without saving.</p>
+  </div></div>
+  <div class="side-by-side">
+    <div>
+      <h2>Revision {{.Conflict.Latest}}</h2>
+      <pre class="code source" tabindex="0">{{.LatestText}}</pre>
+    </div>
+    <form rel="{{rel "save"}}" method="post" action="{{.Canonical}}/revisions">
+      <input type="hidden" name="submission" value="{{.Submission}}">
+      <input type="hidden" name="base" value="{{.Base}}">
+      <h2><label for="text">Your text</label></h2>
+      <div class="form-group">
+        <textarea class="form-textarea source" id="text" name="text">{{.Text}}</textarea>
+      </div>
+      <div class="page-actions">
+        <button class="btn btn-primary" type="submit">Save my text</button>
+        <a class="btn" href="{{.Canonical}}">Leave without saving</a>
+      </div>
+    </form>
+  </div>
+{{template "foot" .}}{{end}}
+
+{{define "history"}}{{template "head" .}}
+  <h1>{{.Title}}</h1>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead><tr><th scope="col" class="num">Revision</th><th scope="col">Saved</th><th scope="col" class="num">Size</th></tr></thead>
+      <tbody>{{range .Revisions}}<tr>
+        <td class="num"><a rel="item" href="{{$.Canonical}}/revisions/{{.Number}}">{{.Number}}</a></td>
+        <td><time>{{when .Created}}</time></td>
+        <td class="num">{{size .Size}}</td>
+      </tr>{{end}}</tbody>
+    </table>
+  </div>
+{{template "foot" .}}{{end}}
+
+{{define "revision"}}{{template "head" .}}
+  <h1>{{.Title}}</h1>
+  <div class="page-actions">
+    <a class="btn" rel="version-history" href="{{.History}}">All revisions</a>
+    {{if .Predecessor}}<a class="btn" rel="predecessor-version" href="{{.Predecessor}}">Revision before</a>{{end}}
+    <a class="btn" rel="alternate" type="text/markdown" href="{{.Raw}}?revision={{.Revision.Number}}">Markdown source</a>
+    <a class="btn" rel="alternate" type="text/html" href="{{.Rendered}}?revision={{.Revision.Number}}">Read</a>
+  </div>
+  <pre class="code source" tabindex="0">{{.Text}}</pre>
+{{template "foot" .}}{{end}}
+
+{{define "rendered"}}{{template "head" .}}
+  {{template "filelinks" .}}
+  <article class="document">{{.Body}}</article>
+{{template "foot" .}}{{end}}
+
+{{define "relation"}}{{template "head" .}}
+  <h1>The {{.Name}} relation</h1>
+  <p><code>{{.Title}}</code></p>
+  <p>{{.Text}}</p>
+{{template "foot" .}}{{end}}
+
+{{define "problem"}}{{template "head" .}}
+  <h1>{{.Title}}</h1>
+  <p>{{.Message}}</p>
+  <p><a href="/">Go to the start</a></p>
+{{template "foot" .}}{{end}}
