@@ -2,7 +2,7 @@
 
 This walk-through follows a single Markdown file through its whole life in PUDL Desktop: a workspace is started, the file is created and written, read in another application, caught in a conflict, exported, deleted and restored. Each step is shown twice, once through the browser's HTML links and forms and once through the terminal, because the proposal's test of the design is that both clients work from the same representations and arrive at the same result.
 
-No code exists yet. Where this document makes a choice the proposal left open, it says so, and the choices that need Paul's decision are gathered at the end. The addresses in the examples show the shape of the design; clients find real addresses in representations and never build them.
+No code exists yet. Where this document makes a choice the proposal left open, it says so. Paul accepted all six of those choices, as proposed, on 4 October 2026; they are listed at the end. The addresses in the examples show the shape of the design; clients find real addresses in representations and never build them.
 
 ## The rules the walk-through relies on
 
@@ -114,11 +114,13 @@ The desktop follows YAVCHN, which already works well on a phone.
 
 Several of these are general enough to belong in PUDL rather than in each site: a pane switch that is separate from minimising every window, a taskbar placed across both panes, scrolling arrows for an overflowing dock, the visible-viewport height, a documented compact title bar, and a way for a site to say which address parameters are its own window state. YAVCHN's PUDL proposal already asks for the first two. The desktop should consume them from a PUDL release rather than carry its own copies.
 
-## Decisions this walk-through needs
+## Decisions
 
-1. **The Markdown dialect.** I propose CommonMark with GitHub's tables, task lists, strikethrough and autolinks, and YAML front matter. Footnotes, wiki-style `[[links]]` and any syntax for including one document in another are left out of stage 1.
+Paul accepted each of these, as proposed here, on 4 October 2026.
+
+1. **The Markdown dialect** is CommonMark with GitHub's tables, task lists, strikethrough and autolinks, and YAML front matter. Footnotes, wiki-style `[[links]]` and any syntax for including one document in another are left out of stage 1.
 2. **Two addresses for every file**, a path address for reading and linking and an identity address for windows, with old path addresses redirecting after a rename.
-3. **What a rename does to links in other documents.** I propose that the desktop offers to rewrite them, as a job that lists the documents it will change, rather than changing them silently or leaving them broken.
+3. **What a rename does to links in other documents.** The desktop offers to rewrite them, as a job that lists the documents it will change, rather than changing them silently or leaving them broken.
 4. **Drafts in the Editor and none in the terminal.** The Editor keeps a draft per person and file; the terminal's editor saves directly and makes a draft only when its save meets a conflict.
 5. **One renderer.** goldmark on the server renders every Markdown view in stage 1, including the editor's live preview, which asks the server for the rendered HTML as the writer types.
-6. **The temporary workspace's limits.** I propose that a workspace lasts 24 hours from its last use, holds at most 5 MB of text, and belongs to the browser that started it.
+6. **The temporary workspace's limits.** A workspace lasts 24 hours from its last use, holds at most 5 MB of text, and belongs to the browser that started it.
