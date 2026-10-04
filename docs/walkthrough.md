@@ -101,7 +101,7 @@ The desktop's terminal therefore keeps the terminal's line editor, history, comp
 - `upload` opens the browser's file picker before anything else is awaited, because the picker must open while the keypress still counts as the reader's action.
 - The site's own commands, such as `tags`, `guide` and the game launchers, move to an extras file, as the text commands already have. The desktop adds `export`, `jobs`, `trash`, `restore`, `log` for a file's revisions and `diff` between two revisions.
 
-None of `terminal.js`, `sitefs.js`, `terminal-text.js` or `terminal.css` has a licence header, and the only licence file in the Parks Computing repository is MIT text with a Microsoft copyright that looks like template boilerplate. Paul wrote every commit to the terminal, so he can licence it as he chooses; the files should say so before they are copied into this repository. The vendored xterm.js is MIT, and its licence file goes with it.
+None of `terminal.js`, `sitefs.js`, `terminal-text.js` or `terminal.css` has a licence header, and the only licence file in the Parks Computing repository is MIT text with a Microsoft copyright that looks like template boilerplate. Paul wrote every commit to the terminal, and on 4 October 2026 he licensed his code for it under Apache-2.0, the project's licence. Each file copied into this repository gets an Apache-2.0 header saying so. The vendored xterm.js stays under its MIT licence, and its licence file goes with it.
 
 ## On a phone
 
