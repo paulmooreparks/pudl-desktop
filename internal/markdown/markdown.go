@@ -11,8 +11,9 @@
 // desktop's own pages.
 //
 // The output uses PUDL's components where PUDL has one for the element: a
-// table is a data-table and a code block is a pre.code. PUDL has no
-// component for running prose yet, so the rest is plain HTML.
+// table is a data-table and a code block is a pre.code. The rest is plain
+// HTML, styled by the desktop's own pages, since a document's prose is
+// content rather than interface.
 package markdown
 
 import (
