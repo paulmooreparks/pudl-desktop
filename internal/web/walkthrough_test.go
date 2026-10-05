@@ -315,4 +315,10 @@ func TestQuota(t *testing.T) {
 	if !strings.Contains(refused.body, "5 MB") {
 		t.Fatalf("the refusal should state the limit:\n%.500s", refused.body)
 	}
+
+	// A form larger than any workspace could hold is refused before it is
+	// read, and changes nothing.
+	edit = c.get(file.link(t, "edit-form", ""))
+	huge := c.submit(edit, RelBase+"save", map[string]string{"text": strings.Repeat("é", store.Quota)})
+	want(t, huge, http.StatusRequestEntityTooLarge)
 }

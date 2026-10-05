@@ -33,9 +33,14 @@ const (
 )
 
 // The limits of a temporary workspace (docs/walkthrough.md, decision 6).
+// Entries are limited as well as bytes, since folders and empty files take
+// no quota, and the number of live workspaces is limited so that the whole
+// store has a ceiling: Workspaces times Quota, a little under 1 GB.
 const (
-	Lifetime = 24 * time.Hour
-	Quota    = 5 << 20
+	Lifetime   = 24 * time.Hour
+	Quota      = 5 << 20
+	Entries    = 1000
+	Workspaces = 190
 )
 
 var (
@@ -44,6 +49,8 @@ var (
 	ErrName     = errors.New("a name may not be empty, start with a dot, or contain a slash")
 	ErrQuota    = errors.New("the workspace has no room for this; it may hold 5 MB of text")
 	ErrNotText  = errors.New("only UTF-8 text without NUL characters can be stored")
+	ErrEntries  = errors.New("the workspace has no room for this; it may hold 1,000 files and folders")
+	ErrFull     = errors.New("the desktop has as many temporary workspaces as it can hold")
 	ErrNotDir   = errors.New("not a folder")
 	ErrNotFile  = errors.New("not a file")
 )
@@ -185,6 +192,14 @@ func (s *Store) CreateWorkspace(ctx context.Context) (*Workspace, string, error)
 		return nil, "", err
 	}
 	defer tx.Rollback()
+	// Expired workspaces not yet swept do not count against the limit.
+	var live int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM workspaces WHERE last_used >= ?`, unix(now.Add(-Lifetime))).Scan(&live); err != nil {
+		return nil, "", err
+	}
+	if live >= Workspaces {
+		return nil, "", ErrFull
+	}
 	if _, err := tx.Exec(`INSERT INTO workspaces (id, token_hash, root, created, last_used) VALUES (?, ?, ?, ?, ?)`,
 		ws.ID, hashToken(token), ws.Root, unix(now), unix(now)); err != nil {
 		return nil, "", err
@@ -358,6 +373,12 @@ func (s *Store) Create(tx *sql.Tx, folder *Entry, name, kind string) (*Entry, er
 	}
 	if n > 0 {
 		return nil, ErrExists
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM entries WHERE workspace = ?`, folder.Workspace).Scan(&n); err != nil {
+		return nil, err
+	}
+	if n > Entries { // the root folder is not counted
+		return nil, ErrEntries
 	}
 	now := s.now()
 	e := &Entry{ID: NewID(8), Workspace: folder.Workspace, Parent: folder.ID, Name: name, Kind: kind, Created: now}

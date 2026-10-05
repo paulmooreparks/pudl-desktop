@@ -19,6 +19,10 @@ Paul decided these on 4 October 2026, after a review of the proposal.
 - **The first design task is the walk-through** that takes one Markdown file from creation through editing, a conflict, export and deletion, through both the browser's HTML forms and the terminal, before any code is written.
 - **PUDL Desktop is also PUDL's conformance harness.** Its coverage manifest maps to the conformance checklists in the PUDL specification, so each scenario it runs is evidence for a checklist item.
 
+Paul added this on 5 October 2026.
+
+- **The desktop has a Windowed view and a Classic view, as parkscomputing.com does.** Windowed is the default: the shell with its menu bar, movable windows and taskbar. Classic is the fallback, made of the same server-rendered pages without the shell, and it is what a browser without scripting, a terminal following links, or a reader who prefers it gets. Every window shows one of those pages, so each window's content has an address that also works as a Classic page. The topbar switches between the two, and a reader's choice of Classic is remembered.
+
 I recommend building **PUDL Desktop** as a separate application with a small, real service underneath it. Its first useful release should let someone work on a document across Files, Editor, Terminal, and a data workbench, save the result, and reopen the workspace from its URL. Add a few good games and a design laboratory so the desktop has both personality and unusually broad interaction coverage.
 
 The main risk is scope. A browser desktop can easily become an unfinished operating system, office suite, package manager, and hosting platform at once. The project will succeed if applications share a modest set of well-defined services and each release completes a useful workflow. A large catalog of windows containing unrelated websites would demonstrate much less of PUDL.

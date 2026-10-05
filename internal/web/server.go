@@ -94,6 +94,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// A form is read whole before any handler sees it, so one too large
+		// is refused outright rather than read in part. A textarea's text is
+		// percent-encoded, up to three characters for each byte of a full
+		// quota, and the form's other fields are small.
+		r.Body = http.MaxBytesReader(w, r.Body, 3*store.Quota+64<<10)
+		if err := r.ParseForm(); err != nil {
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				s.render(w, r, http.StatusRequestEntityTooLarge, "problem", map[string]any{
+					"Title":   "Too large",
+					"Message": "That was more than a workspace can hold. Nothing was changed.",
+				})
+				return
+			}
+			http.Error(w, "The form could not be read.", http.StatusBadRequest)
+			return
+		}
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "same-origin")
@@ -115,7 +132,14 @@ func (s *Server) welcome(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) startWorkspace(w http.ResponseWriter, r *http.Request) {
 	ws, token, err := s.store.CreateWorkspace(r.Context())
-	if err != nil {
+	if errors.Is(err, store.ErrFull) {
+		w.Header().Set("Retry-After", "3600")
+		s.render(w, r, http.StatusServiceUnavailable, "problem", map[string]any{
+			"Title":   "The desktop is full",
+			"Message": "The desktop has as many temporary workspaces as it can hold. Each one is deleted a day after its last use, so please try again later.",
+		})
+		return
+	} else if err != nil {
 		s.fail(w, r, err)
 		return
 	}
@@ -276,7 +300,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request, ws *store.Worksp
 		}
 		return idURL(e), nil
 	})
-	if errors.Is(err, store.ErrName) || errors.Is(err, store.ErrExists) || errors.Is(err, store.ErrNotDir) {
+	if errors.Is(err, store.ErrName) || errors.Is(err, store.ErrExists) || errors.Is(err, store.ErrNotDir) || errors.Is(err, store.ErrEntries) {
 		s.showFolder(w, r, folder, http.StatusUnprocessableEntity, err.Error(), name, kind)
 		return
 	} else if err != nil {
@@ -542,11 +566,15 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page
 }
 
 func humanSize(n int64) string {
+	// One decimal place, left out when it is zero: 5 MB, 1.5 KB.
+	short := func(f float64, unit string) string {
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", f), ".0") + " " + unit
+	}
 	switch {
 	case n >= 1<<20:
-		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+		return short(float64(n)/(1<<20), "MB")
 	case n >= 1<<10:
-		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
+		return short(float64(n)/(1<<10), "KB")
 	default:
 		return fmt.Sprintf("%d bytes", n)
 	}
