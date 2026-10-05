@@ -232,11 +232,13 @@ func TestWalkthrough(t *testing.T) {
 	}
 
 	// The path address, which a person may type, reaches the same file and
-	// gives its identity address as canonical.
-	if !strings.HasSuffix(root.url, "/files/") {
-		t.Fatalf("the workspace should open at its root folder's path, got %s", root.url)
+	// gives its identity address as canonical. The Classic view is the
+	// root folder at its path.
+	classic := c.get(root.link(t, RelBase+"classic", ""))
+	if !strings.HasSuffix(classic.url, "/files/") {
+		t.Fatalf("the Classic view should open at the root folder's path, got %s", classic.url)
 	}
-	byPath := c.get(root.url + "notes/report.md")
+	byPath := c.get(classic.url + "notes/report.md")
 	want(t, byPath, http.StatusOK)
 	if got := byPath.link(t, "canonical", ""); !strings.HasSuffix(file.url, got) {
 		t.Fatalf("the path address should give %s as canonical, got %s", file.url, got)
@@ -270,6 +272,40 @@ func TestWalkthrough(t *testing.T) {
 	history := c.get(twice.link(t, "version-history", ""))
 	if strings.Count(history.body, `rel="item"`) != 5 {
 		t.Fatalf("a form sent twice should make one revision, five in all:\n%s", history.body)
+	}
+}
+
+// TestViews follows the view switch: the workspace opens Windowed, on a
+// desktop holding the root folder's window; choosing Classic is
+// remembered, so the workspace's address then opens the root folder's
+// page; choosing Windowed again goes back to the desktop.
+func TestViews(t *testing.T) {
+	hs := newDesktop(t)
+	c := newClient(t, hs.URL)
+	desk := c.submit(c.get("/"), RelBase+"start", nil)
+	want(t, desk, http.StatusOK)
+	win := find(desk.doc, func(n *html.Node) bool { return n.Data == "section" && strings.HasPrefix(attr(n, "data-win"), "r-") })
+	if win == nil || !strings.Contains(desk.body, "data-win-src=") {
+		t.Fatalf("the Windowed view should hold the root folder's window:\n%.800s", desk.body)
+	}
+	classic := c.get(desk.link(t, RelBase+"classic", ""))
+	if !strings.HasSuffix(classic.url, "/files/") || strings.Contains(classic.body, "data-win-layer") {
+		t.Fatalf("Classic should be the root folder's page, got %s", classic.url)
+	}
+	again := c.get(strings.TrimSuffix(classic.url, "files/"))
+	if !strings.HasSuffix(again.url, "/files/") {
+		t.Fatalf("the choice of Classic should be remembered, got %s", again.url)
+	}
+	back := c.get(classic.link(t, RelBase+"windowed", ""))
+	if !strings.Contains(back.body, "data-win-layer") {
+		t.Fatalf("Windowed should go back to the desktop, got %s", back.url)
+	}
+	// A window is the same resource as its page, in another representation,
+	// at the address the layer's data-win-src gives for its key.
+	layer := find(desk.doc, func(n *html.Node) bool { return n.Data == "div" && attr(n, "data-win-src") != "" })
+	page := c.get(strings.ReplaceAll(attr(layer, "data-win-src"), "{key}", attr(win, "data-win")))
+	if page.status != http.StatusOK || !strings.HasPrefix(strings.TrimSpace(page.body), "<section class=\"win\"") {
+		t.Fatalf("a window's address should serve its window:\n%.400s", page.body)
 	}
 }
 

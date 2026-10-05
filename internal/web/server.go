@@ -18,6 +18,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
@@ -39,10 +40,12 @@ const RelBase = "https://pudl.parkscomputing.com/rel/"
 
 // The desktop's own relations, and what each page at RelBase says of it.
 var relations = map[string]string{
-	"create":  "A form on a folder that creates a file or a folder in it. Its fields are name and kind (file or folder).",
-	"save":    "A form that makes a new revision of a file from the text field. Its base field is the revision the text was written against; if the file has moved on since, the change is refused with 409 Conflict and nothing is lost.",
-	"start":   "A form that starts a temporary workspace, which belongs to the browser that started it.",
-	"history": "The list of a file's revisions, newest first.",
+	"create":   "A form on a folder that creates a file or a folder in it. Its fields are name and kind (file or folder).",
+	"save":     "A form that makes a new revision of a file from the text field. Its base field is the revision the text was written against; if the file has moved on since, the change is refused with 409 Conflict and nothing is lost.",
+	"start":    "A form that starts a temporary workspace, which belongs to the browser that started it.",
+	"history":  "The list of a file's revisions, newest first.",
+	"windowed": "A workspace's Windowed view, the desktop, whose windows show its resources; following it makes the Windowed view this browser's choice.",
+	"classic":  "A workspace's Classic view, its resources as pages of their own; following it makes the Classic view this browser's choice.",
 }
 
 // Server serves the desktop.
@@ -59,6 +62,20 @@ func New(st *store.Store) (*Server, error) {
 		"rel":  func(name string) string { return RelBase + name },
 		"when": func(t time.Time) string { return t.UTC().Format("2006-01-02 15:04 UTC") },
 		"size": humanSize,
+		// wopen gives a link in a window the key of the window it opens.
+		"wopen": func(data map[string]any, key string) template.HTMLAttr {
+			if win, _ := data["Win"].(bool); !win || key == "" {
+				return ""
+			}
+			return template.HTMLAttr(` data-win-open="` + template.HTMLEscapeString(key) + `"`)
+		},
+		"revkey": func(data map[string]any, n int) string {
+			f, _ := data["File"].(*store.Entry)
+			if f == nil {
+				return ""
+			}
+			return fmt.Sprintf("rev-%s-%d", f.ID, n)
+		},
 	}
 	pages, err := template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
@@ -71,6 +88,7 @@ func New(st *store.Store) (*Server, error) {
 	s.mux.HandleFunc("POST /workspaces", s.startWorkspace)
 	s.mux.HandleFunc("GET /rel/{name}", s.relation)
 	s.mux.HandleFunc("GET /w/{ws}/{$}", s.owned(s.workspaceRoot))
+	s.mux.HandleFunc("GET /w/{ws}/win/{key}", s.owned(s.window))
 	s.mux.HandleFunc("GET /w/{ws}/files/{path...}", s.owned(s.byPath))
 	s.mux.HandleFunc("GET /w/{ws}/r/{id}", s.owned(s.byID))
 	s.mux.HandleFunc("POST /w/{ws}/r/{id}/entries", s.owned(s.create))
@@ -173,8 +191,134 @@ func (s *Server) owned(h ownedHandler) http.HandlerFunc {
 	}
 }
 
+// === The Windowed and Classic views ========================================
+
+// A workspace's own address is its Windowed view, the desktop, unless the
+// reader has chosen Classic, which this browser remembers in a cookie.
+// ?view=classic and ?view=window make the choice; both then go to the
+// chosen view's plain address.
 func (s *Server) workspaceRoot(w http.ResponseWriter, r *http.Request, ws *store.Workspace) {
-	http.Redirect(w, r, "/w/"+ws.ID+"/files/", http.StatusSeeOther)
+	base := "/w/" + ws.ID + "/"
+	switch r.URL.Query().Get("view") {
+	case "classic":
+		http.SetCookie(w, &http.Cookie{Name: "view", Value: "classic", Path: base, HttpOnly: true, Secure: s.Secure,
+			SameSite: http.SameSiteLaxMode, Expires: ws.Expires().Add(time.Hour)})
+		http.Redirect(w, r, base+"files/", http.StatusSeeOther)
+		return
+	case "window":
+		http.SetCookie(w, &http.Cookie{Name: "view", Path: base, MaxAge: -1, HttpOnly: true, Secure: s.Secure, SameSite: http.SameSiteLaxMode})
+		http.Redirect(w, r, base, http.StatusSeeOther)
+		return
+	}
+	if c, err := r.Cookie("view"); err == nil && c.Value == "classic" {
+		http.Redirect(w, r, base+"files/", http.StatusSeeOther)
+		return
+	}
+	/* The windows the address names, or with none named the root folder's,
+	   are rendered into the page, as PUDL's window contract asks of a
+	   server, so the desktop holds its content without script, and a client
+	   that only follows links and forms finds them there. */
+	keys := []string{"r-" + ws.Root}
+	if q := r.URL.Query(); q.Has("open") {
+		keys = nil
+		for _, k := range strings.Split(q.Get("open"), ",") {
+			if kind, _, _ := parseKey(k); kind != "" {
+				keys = append(keys, k)
+			}
+		}
+	}
+	var wins strings.Builder
+	for _, k := range keys {
+		rec := httptest.NewRecorder()
+		r2 := r.Clone(r.Context())
+		r2.SetPathValue("key", k)
+		s.window(rec, r2, ws)
+		if rec.Code == http.StatusOK {
+			wins.WriteString(rec.Body.String())
+		}
+	}
+	s.render(w, r, http.StatusOK, "desktop", map[string]any{
+		"Title": "PUDL Desktop", "Desktop": true, "RootKey": "r-" + ws.Root,
+		"RootURL": base, "RootPage": base + "files/", "Windows": template.HTML(wins.String()),
+	})
+}
+
+// A window's key names a resource and the view of it the window shows:
+// r-<id> a folder or a file, edit-<id> its editor, read-<id> its rendered
+// form, hist-<id> its revisions, and rev-<id>-<n> one revision. Keys are
+// what PUDL's windows write in the address, so they hold only letters,
+// digits and hyphens, which entry ids are made of.
+func parseKey(key string) (kind, id, n string) {
+	parts := strings.Split(key, "-")
+	switch {
+	case len(parts) == 2 && (parts[0] == "r" || parts[0] == "edit" || parts[0] == "read" || parts[0] == "hist"):
+		return parts[0], parts[1], ""
+	case len(parts) == 3 && parts[0] == "rev":
+		return parts[0], parts[1], parts[2]
+	}
+	return "", "", ""
+}
+
+// keyURL is the Classic page a window's key names.
+func keyURL(ws, key string) string {
+	kind, id, n := parseKey(key)
+	base := "/w/" + ws + "/r/" + id
+	switch kind {
+	case "r":
+		return base
+	case "edit":
+		return base + "/edit"
+	case "read":
+		return base + "/rendered"
+	case "hist":
+		return base + "/revisions"
+	case "rev":
+		return base + "/revisions/" + n
+	}
+	return ""
+}
+
+type windowCtx struct{}
+
+// window serves a resource as a window of the Windowed view, the markup
+// PUDL's windows fetch by key. It is the same resource as its Classic page,
+// in another representation.
+func (s *Server) window(w http.ResponseWriter, r *http.Request, ws *store.Workspace) {
+	key := r.PathValue("key")
+	kind, id, n := parseKey(key)
+	r2 := r.Clone(context.WithValue(r.Context(), windowCtx{}, key))
+	r2.SetPathValue("id", id)
+	r2.SetPathValue("n", n)
+	switch kind {
+	case "r":
+		s.byID(w, r2, ws)
+	case "edit":
+		s.editForm(w, r2, ws)
+	case "read":
+		s.rendered(w, r2, ws)
+	case "hist":
+		s.history(w, r2, ws)
+	case "rev":
+		s.revision(w, r2, ws)
+	default:
+		s.notFound(w, r)
+	}
+}
+
+// windowed says whether a response is wanted as a window, and the key of
+// the window asking: a request by key, or a form sent from inside a window,
+// which says so with the X-PUDL-Window header so that its result comes back
+// as the window's content rather than as a page.
+func windowed(r *http.Request) (string, bool) {
+	if k, ok := r.Context().Value(windowCtx{}).(string); ok {
+		return k, true
+	}
+	if k := r.Header.Get("X-PUDL-Window"); k != "" {
+		if kind, _, _ := parseKey(k); kind != "" {
+			return k, true
+		}
+	}
+	return "", false
 }
 
 // === Addresses =============================================================
@@ -250,8 +394,8 @@ func (s *Server) crumbs(ctx context.Context, e *store.Entry) []crumb {
 // === Folders ===============================================================
 
 type item struct {
-	Entry *store.Entry
-	URL   string
+	Entry    *store.Entry
+	URL, Key string
 }
 
 func (s *Server) showFolder(w http.ResponseWriter, r *http.Request, f *store.Entry, status int, problem, name, kind string) {
@@ -263,7 +407,7 @@ func (s *Server) showFolder(w http.ResponseWriter, r *http.Request, f *store.Ent
 	}
 	items := make([]item, len(children))
 	for i, c := range children {
-		items[i] = item{c, s.pathURL(ctx, c)}
+		items[i] = item{c, s.pathURL(ctx, c), "r-" + c.ID}
 	}
 	title := f.Name
 	if f.Parent == "" {
@@ -282,6 +426,7 @@ func (s *Server) showFolder(w http.ResponseWriter, r *http.Request, f *store.Ent
 		"Title": title, "Folder": f, "Items": items, "Up": up,
 		"Canonical": idURL(f), "Path": s.pathURL(ctx, f), "Crumbs": s.crumbs(ctx, f),
 		"Submission": store.NewID(16), "Problem": problem, "Name": name, "Kind": kind,
+		"Key": "r-" + f.ID,
 	})
 }
 
@@ -322,6 +467,8 @@ func (s *Server) fileLinks(ctx context.Context, f *store.Entry) map[string]any {
 		"Canonical": idURL(f), "Path": s.pathURL(ctx, f),
 		"History": idURL(f) + "/revisions", "Latest": fmt.Sprintf("%s/revisions/%d", idURL(f), f.Latest),
 		"Raw": idURL(f) + "/raw", "Rendered": idURL(f) + "/rendered", "Edit": idURL(f) + "/edit",
+		"Key": "r-" + f.ID, "FileKey": "r-" + f.ID, "EditKey": "edit-" + f.ID, "ReadKey": "read-" + f.ID,
+		"HistoryKey": "hist-" + f.ID, "LatestKey": fmt.Sprintf("rev-%s-%d", f.ID, f.Latest),
 	}
 }
 
@@ -358,6 +505,7 @@ func (s *Server) editForm(w http.ResponseWriter, r *http.Request, ws *store.Work
 func (s *Server) showEdit(w http.ResponseWriter, r *http.Request, f *store.Entry, status, base int, text, problem string) {
 	data := s.fileLinks(r.Context(), f)
 	data["Title"] = "Edit " + f.Name
+	data["Key"] = "edit-" + f.ID
 	data["Base"], data["Text"], data["Problem"] = base, text, problem
 	data["Submission"] = store.NewID(16)
 	s.render(w, r, status, "edit", data)
@@ -412,6 +560,7 @@ func (s *Server) showConflict(w http.ResponseWriter, r *http.Request, f *store.E
 	}
 	data := s.fileLinks(r.Context(), f)
 	data["Title"] = "Conflict in " + f.Name
+	data["Key"] = "edit-" + f.ID
 	data["Conflict"], data["LatestText"], data["Text"] = c, string(latest), text
 	data["Base"] = c.Latest
 	data["Submission"] = store.NewID(16)
@@ -431,6 +580,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, ws *store.Works
 	}
 	data := s.fileLinks(r.Context(), f)
 	data["Title"] = "Revisions of " + f.Name
+	data["Key"] = "hist-" + f.ID
 	data["Revisions"] = revs
 	s.render(w, r, http.StatusOK, "history", data)
 }
@@ -458,9 +608,11 @@ func (s *Server) revision(w http.ResponseWriter, r *http.Request, ws *store.Work
 	}
 	data := s.fileLinks(r.Context(), f)
 	data["Title"] = fmt.Sprintf("%s, revision %d", f.Name, n)
+	data["Key"] = fmt.Sprintf("rev-%s-%d", f.ID, n)
 	data["Revision"], data["Text"] = rev, string(text)
 	if n > 1 {
 		data["Predecessor"] = fmt.Sprintf("%s/revisions/%d", idURL(f), n-1)
+		data["PredecessorKey"] = fmt.Sprintf("rev-%s-%d", f.ID, n-1)
 	}
 	s.render(w, r, http.StatusOK, "revision", data)
 }
@@ -499,8 +651,13 @@ func (s *Server) rendered(w http.ResponseWriter, r *http.Request, ws *store.Work
 	}
 	data := s.fileLinks(r.Context(), f)
 	data["Revision"] = rev
-	data["Body"] = template.HTML(doc.HTML)
+	data["Doc"] = template.HTML(doc.HTML)
 	data["Meta"] = doc.Meta
+	if r.URL.Query().Get("revision") == "" {
+		data["Key"] = "read-" + f.ID
+	} else {
+		data["Key"] = ""
+	}
 	if t, ok := doc.Meta["title"].(string); ok && t != "" {
 		data["Title"] = t
 	}
@@ -554,14 +711,39 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	})
 }
 
+// render renders a page's body, then wraps it: as a window when one asks
+// for it, and otherwise as a Classic page. The desktop is a page of its own.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page string, data map[string]any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if strings.HasPrefix(r.URL.Path, "/w/") {
 		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Vary", "X-PUDL-Window")
+	}
+	data["Ws"] = r.PathValue("ws")
+	asking, win := windowed(r)
+	wrapper := "page"
+	if page == "desktop" {
+		wrapper = "desktop"
+	} else {
+		data["Win"] = win
+		var body strings.Builder
+		if err := s.pages.ExecuteTemplate(&body, "body-"+page, data); err != nil {
+			log.Printf("render %s: %v", page, err)
+		}
+		data["Body"] = template.HTML(body.String())
+		if win {
+			wrapper = "window"
+			// A window shows the resource the response is about, which after a
+			// form sent from a window may be another than the one that asked.
+			if k, _ := data["Key"].(string); k == "" {
+				data["Key"] = asking
+			}
+			data["Self"] = keyURL(data["Ws"].(string), data["Key"].(string))
+		}
 	}
 	w.WriteHeader(status)
-	if err := s.pages.ExecuteTemplate(w, page, data); err != nil {
-		log.Printf("render %s: %v", page, err)
+	if err := s.pages.ExecuteTemplate(w, wrapper, data); err != nil {
+		log.Printf("render %s: %v", wrapper, err)
 	}
 }
 

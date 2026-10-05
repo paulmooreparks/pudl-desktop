@@ -1,8 +1,9 @@
 module github.com/paulmooreparks/pudl-desktop
 
-go 1.26.0
+go 1.27
 
 require (
+	github.com/chromedp/chromedp v0.19.1
 	github.com/yuin/goldmark v1.8.6
 	github.com/yuin/goldmark-meta v1.1.0
 	golang.org/x/net v0.59.0
@@ -10,6 +11,7 @@ require (
 )
 
 require (
+	github.com/chromedp/cdproto v0.157.4 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

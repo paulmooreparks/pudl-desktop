@@ -1,11 +1,10 @@
-{{define "head"}}<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{.Title}}</title>
-  <script src="/static/pudl/pudl-theme.js"></script>
-  <link rel="stylesheet" href="/static/pudl/pudl.css">
+{{/* Every resource's content is a body, rendered once and then wrapped:
+     as a Classic page, with the application bar and the path, or as a
+     window for the Windowed view, with its title bar. A link in a body that
+     names a resource with a window carries data-win-open from wopen, so in
+     a window it opens that window, and its href is the Classic page. */}}
+
+{{define "styles"}}
   <style>
     main.page { max-width: 60rem; margin: 0 auto; padding: var(--space-5) var(--space-4); }
     main.page > h1 { margin-top: var(--space-3); }
@@ -28,14 +27,39 @@
     article.document li:has(> input[type="checkbox"]) { list-style: none; }
     article.document li > input[type="checkbox"] { margin-inline: calc(-1 * var(--space-4)) var(--space-1); accent-color: var(--accent); }
     article.document :not(pre) > code { font-family: var(--mono); font-size: .9em; padding: .1em .3em; border-radius: var(--radius-sm); background: var(--surface-alt); }
+    /* In a window the body is the window's, padded as a page is. */
+    .win-body > .win-content { padding: var(--space-4); }
+    .win-body > .win-content > h1 { display: none; }
+    .win-body textarea.source { min-height: 16rem; }
   </style>
+{{end}}
+
+{{define "viewswitch"}}{{if .Ws}}
+      <nav class="seg view-seg" aria-label="View" data-seg-menu>
+        <a rel="{{rel "windowed"}}" href="/w/{{.Ws}}/?view=window"{{if .Desktop}} aria-current="page"{{end}}>Windowed</a>
+        <a rel="{{rel "classic"}}" href="/w/{{.Ws}}/?view=classic"{{if not .Desktop}} aria-current="page"{{end}}>Classic</a>
+      </nav>{{end}}
+{{end}}
+
+{{define "page"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <script src="/static/pudl/pudl-theme.js"></script>
+  <link rel="stylesheet" href="/static/pudl/pudl.css">
+  <script src="/static/pudl/pudl-menu.js" defer></script>
+  {{template "styles"}}
   {{if .Canonical}}<link rel="canonical" href="{{.Canonical}}">{{end}}
   {{if .Up}}<link rel="up" href="{{.Up}}">{{end}}
+  {{if .Key}}<meta name="pudl-window" content="{{.Key}}">{{end}}
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/">PUDL Desktop</a>
     <div class="topbar-chrome">
+      {{template "viewswitch" .}}
       <button class="theme-toggle" type="button" aria-label="Switch light and dark" onclick="pudlToggleTheme()"></button>
     </div>
   </header>
@@ -44,15 +68,98 @@
       {{range .Crumbs}}<li><a href="{{.URL}}">{{.Name}}</a></li>{{end}}
       <li><span aria-current="page">{{.Title}}</span></li>
     </ol></nav>{{end}}
-{{end}}
-
-{{define "foot"}}
+    {{.Body}}
   </main>
 </body>
 </html>
 {{end}}
 
-{{define "welcome"}}{{template "head" .}}
+{{define "window"}}<section class="win" data-win="{{.Key}}" aria-labelledby="win-{{.Key}}-title">
+  <header class="win-head">
+    <h2 class="win-title" id="win-{{.Key}}-title">{{.Title}}</h2>
+    <nav class="win-chrome" aria-label="Window">
+      {{if .Self}}<a class="win-btn" data-win-action="page" href="{{.Self}}" aria-label="Open as a page" title="Open as a page"></a>{{end}}
+      <a class="win-btn" data-win-action="minimize" href="?" aria-label="Minimize" title="Minimize"></a>
+      <a class="win-btn" data-win-action="maximize" href="?" aria-label="Maximize" title="Maximize"></a>
+      <a class="win-btn" data-win-action="close" href="?" aria-label="Close" title="Close"></a>
+    </nav>
+  </header>
+  <div class="win-body"><div class="win-content">{{.Body}}</div></div>
+</section>
+{{end}}
+
+{{/* The Windowed view of a workspace: the menu bar, the windows the
+     address names, and the dock of open windows. Each window's markup is
+     fetched from data-win-src by its key. */}}
+{{define "desktop"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <script src="/static/pudl/pudl-theme.js"></script>
+  <link rel="stylesheet" href="/static/pudl/pudl.css">
+  <link rel="stylesheet" href="/static/pudl/pudl-windows.css">
+  <script src="/static/pudl/pudl-windows.js" defer></script>
+  <script src="/static/pudl/pudl-menu.js" defer></script>
+  <script src="/static/pudl/pudl-toast.js" defer></script>
+  <script src="/static/pudl/pudl-menubar.js" defer></script>
+  <script src="/static/desktop.js" defer></script>
+  {{template "styles"}}
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { display: flex; flex-direction: column; }
+    .desktop-dockbar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); background: var(--surface); border-bottom: 1px solid var(--border); min-height: 36px; }
+    .desktop-dockbar .win-dock { flex: 1 1 auto; min-width: 0; }
+    .desktop-area { flex: 1 1 auto; min-height: 0; position: relative; background: var(--bg); }
+    .desktop-area > .win-host { position: absolute; inset: 0; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <nav class="menubar" data-menubar aria-label="PUDL Desktop">
+      <ul data-menubar-source hidden>
+        <li>PUDL Desktop
+          <ul>
+            <li><a href="/">About PUDL Desktop</a></li>
+            <li>-</li>
+            <li><a href="{{.RootURL}}?view=classic">This workspace as pages</a></li>
+          </ul></li>
+        <li data-menubar-id="go">Go
+          <ul>
+            <li><a href="{{.RootPage}}" data-win-open="{{.RootKey}}">Workspace</a></li>
+          </ul></li>
+        <li data-menubar-id="applets">Applets
+          <ul>
+            <li><a href="{{.RootPage}}" data-win-open="{{.RootKey}}">Files</a></li>
+          </ul></li>
+        <li data-menubar-id="view">View
+          <ul>
+            <li><a href="{{.RootURL}}?view=classic">Classic view</a></li>
+            <li><button type="button" onclick="pudlToggleTheme()">Switch light and dark</button></li>
+          </ul></li>
+        <li data-menubar-id="window" data-menubar-windows>Window<ul></ul></li>
+      </ul>
+      <a class="brand" href="/" data-menubar-fallback>PUDL Desktop</a>
+    </nav>
+    <div class="topbar-chrome">
+      {{template "viewswitch" .}}
+      <button class="theme-toggle" type="button" aria-label="Switch light and dark" onclick="pudlToggleTheme()"></button>
+    </div>
+  </header>
+  <div class="desktop-dockbar">
+    <nav class="win-dock" data-win-dock aria-label="Open windows"></nav>
+  </div>
+  <main class="desktop-area">
+    <div class="win-host">
+      <div class="win-layer" data-win-layer data-win-menu data-win-src="/w/{{.Ws}}/win/{key}" data-win-default="{{.RootKey}}">{{.Windows}}</div>
+    </div>
+  </main>
+</body>
+</html>
+{{end}}
+
+{{define "body-welcome"}}
   <h1>PUDL Desktop</h1>
   <p>PUDL Desktop is a place to write and keep Markdown documents, built with the PUDL design language. It is at an early stage: today it keeps folders and Markdown files with their full history.</p>
   <div class="card">
@@ -63,9 +170,9 @@
       <button class="btn btn-primary" type="submit">Start a temporary workspace</button>
     </form>
   </div>
-{{template "foot" .}}{{end}}
+{{end}}
 
-{{define "folder"}}{{template "head" .}}
+{{define "body-folder"}}
   <h1>{{.Title}}</h1>
   <div class="data-table-wrap">
     <table class="data-table">
@@ -73,7 +180,7 @@
       <tbody>
         {{range .Items}}<tr>
           <td><span class="glyph" style="--glyph: var({{if eq .Entry.Kind "folder"}}--glyph-folder{{else}}--glyph-document{{end}})" aria-hidden="true"></span>
-            <a rel="item" href="{{.URL}}">{{.Entry.Name}}</a></td>
+            <a rel="item" href="{{.URL}}"{{wopen $ .Key}}>{{.Entry.Name}}</a></td>
           <td>{{if eq .Entry.Kind "folder"}}Folder{{else}}Document{{end}}</td>
           <td class="num">{{if eq .Entry.Kind "file"}}{{.Entry.Latest}}{{end}}</td>
           <td><time>{{when .Entry.Created}}</time></td>
@@ -86,58 +193,58 @@
   <form rel="{{rel "create"}}" method="post" action="{{.Canonical}}/entries" class="form-row">
     <input type="hidden" name="submission" value="{{.Submission}}">
     <div class="form-group">
-      <label class="form-label" for="new-name">Name</label>
-      <input class="form-input" id="new-name" name="name" value="{{.Name}}" required {{if .Problem}}aria-invalid="true"{{end}} placeholder="notes.md">
+      <label class="form-label" for="new-name-{{.Folder.ID}}">Name</label>
+      <input class="form-input" id="new-name-{{.Folder.ID}}" name="name" value="{{.Name}}" required {{if .Problem}}aria-invalid="true"{{end}} placeholder="notes.md">
     </div>
     <div class="form-group">
-      <label class="form-label" for="new-kind">Kind</label>
-      <select class="form-select" id="new-kind" name="kind">
+      <label class="form-label" for="new-kind-{{.Folder.ID}}">Kind</label>
+      <span class="form-select-wrap"><select class="form-select" id="new-kind-{{.Folder.ID}}" name="kind">
         <option value="file" {{if eq .Kind "file"}}selected{{end}}>Document</option>
         <option value="folder" {{if eq .Kind "folder"}}selected{{end}}>Folder</option>
-      </select>
+      </select></span>
     </div>
     <button class="btn" type="submit">Create</button>
   </form>
-{{template "foot" .}}{{end}}
+{{end}}
 
 {{define "filelinks"}}
   <div class="page-actions">
-    <a class="btn btn-primary" rel="edit-form" href="{{.Edit}}">Edit</a>
-    <a class="btn" rel="alternate" type="text/html" href="{{.Rendered}}">Read</a>
-    <a class="btn" rel="alternate" type="text/markdown" href="{{.Raw}}">Markdown source</a>
-    <a class="btn" rel="version-history" href="{{.History}}">Revisions</a>
+    <a class="btn btn-primary" rel="edit-form" href="{{.Edit}}"{{wopen . .EditKey}}>Edit</a>
+    <a class="btn" rel="alternate" type="text/html" href="{{.Rendered}}"{{wopen . .ReadKey}}>Read</a>
+    <a class="btn" rel="alternate" type="text/markdown" href="{{.Raw}}"{{if .Win}} target="_blank"{{end}}>Markdown source</a>
+    <a class="btn" rel="version-history" href="{{.History}}"{{wopen . .HistoryKey}}>Revisions</a>
   </div>
 {{end}}
 
-{{define "file"}}{{template "head" .}}
+{{define "body-file"}}
   <h1>{{.Title}}</h1>
   {{template "filelinks" .}}
   <table class="kv-table">
-    <tr><th>Revision</th><td><a rel="latest-version" href="{{.Latest}}">{{.File.Latest}}</a>, saved <time>{{when .Revision.Created}}</time></td></tr>
+    <tr><th>Revision</th><td><a rel="latest-version" href="{{.Latest}}"{{wopen . .LatestKey}}>{{.File.Latest}}</a>, saved <time>{{when .Revision.Created}}</time></td></tr>
     <tr><th>Size</th><td>{{size .Revision.Size}}</td></tr>
     <tr><th>Created</th><td><time>{{when .File.Created}}</time></td></tr>
     <tr><th>Address</th><td><a rel="canonical" href="{{.Canonical}}">{{.Canonical}}</a></td></tr>
   </table>
-{{template "foot" .}}{{end}}
+{{end}}
 
-{{define "edit"}}{{template "head" .}}
+{{define "body-edit"}}
   <h1>{{.Title}}</h1>
   {{if .Problem}}<div class="notice danger" role="alert"><div class="notice-content"><p class="notice-body">{{.Problem}}</p></div></div>{{end}}
   <form rel="{{rel "save"}}" method="post" action="{{.Canonical}}/revisions">
     <input type="hidden" name="submission" value="{{.Submission}}">
     <input type="hidden" name="base" value="{{.Base}}">
     <div class="form-group">
-      <label class="form-label" for="text">Markdown, revision {{.Base}}</label>
-      <textarea class="form-textarea source" id="text" name="text" spellcheck="true">{{.Text}}</textarea>
+      <label class="form-label" for="text-{{.File.ID}}">Markdown, revision {{.Base}}</label>
+      <textarea class="form-textarea source" id="text-{{.File.ID}}" name="text" spellcheck="true">{{.Text}}</textarea>
     </div>
     <div class="page-actions">
       <button class="btn btn-primary" type="submit">Save</button>
-      <a class="btn" href="{{.Canonical}}">Cancel</a>
+      <a class="btn" href="{{.Canonical}}"{{wopen . .FileKey}}>Cancel</a>
     </div>
   </form>
-{{template "foot" .}}{{end}}
+{{end}}
 
-{{define "conflict"}}{{template "head" .}}
+{{define "body-conflict"}}
   <h1>{{.Title}}</h1>
   <div class="notice warn" role="alert"><div class="notice-content">
     <p class="notice-title">The document changed while you were editing it.</p>
@@ -151,56 +258,56 @@
     <form rel="{{rel "save"}}" method="post" action="{{.Canonical}}/revisions">
       <input type="hidden" name="submission" value="{{.Submission}}">
       <input type="hidden" name="base" value="{{.Base}}">
-      <h2><label for="text">Your text</label></h2>
+      <h2><label for="text-{{.File.ID}}">Your text</label></h2>
       <div class="form-group">
-        <textarea class="form-textarea source" id="text" name="text">{{.Text}}</textarea>
+        <textarea class="form-textarea source" id="text-{{.File.ID}}" name="text">{{.Text}}</textarea>
       </div>
       <div class="page-actions">
         <button class="btn btn-primary" type="submit">Save my text</button>
-        <a class="btn" href="{{.Canonical}}">Leave without saving</a>
+        <a class="btn" href="{{.Canonical}}"{{wopen . .FileKey}}>Leave without saving</a>
       </div>
     </form>
   </div>
-{{template "foot" .}}{{end}}
+{{end}}
 
-{{define "history"}}{{template "head" .}}
+{{define "body-history"}}
   <h1>{{.Title}}</h1>
   <div class="data-table-wrap">
     <table class="data-table">
       <thead><tr><th scope="col" class="num">Revision</th><th scope="col">Saved</th><th scope="col" class="num">Size</th></tr></thead>
       <tbody>{{range .Revisions}}<tr>
-        <td class="num"><a rel="item" href="{{$.Canonical}}/revisions/{{.Number}}">{{.Number}}</a></td>
+        <td class="num"><a rel="item" href="{{$.Canonical}}/revisions/{{.Number}}"{{wopen $ (revkey $ .Number)}}>{{.Number}}</a></td>
         <td><time>{{when .Created}}</time></td>
         <td class="num">{{size .Size}}</td>
       </tr>{{end}}</tbody>
     </table>
   </div>
-{{template "foot" .}}{{end}}
+{{end}}
 
-{{define "revision"}}{{template "head" .}}
+{{define "body-revision"}}
   <h1>{{.Title}}</h1>
   <div class="page-actions">
-    <a class="btn" rel="version-history" href="{{.History}}">All revisions</a>
-    {{if .Predecessor}}<a class="btn" rel="predecessor-version" href="{{.Predecessor}}">Revision before</a>{{end}}
-    <a class="btn" rel="alternate" type="text/markdown" href="{{.Raw}}?revision={{.Revision.Number}}">Markdown source</a>
+    <a class="btn" rel="version-history" href="{{.History}}"{{wopen . .HistoryKey}}>All revisions</a>
+    {{if .Predecessor}}<a class="btn" rel="predecessor-version" href="{{.Predecessor}}"{{wopen . .PredecessorKey}}>Revision before</a>{{end}}
+    <a class="btn" rel="alternate" type="text/markdown" href="{{.Raw}}?revision={{.Revision.Number}}"{{if .Win}} target="_blank"{{end}}>Markdown source</a>
     <a class="btn" rel="alternate" type="text/html" href="{{.Rendered}}?revision={{.Revision.Number}}">Read</a>
   </div>
   <pre class="code source" tabindex="0">{{.Text}}</pre>
-{{template "foot" .}}{{end}}
+{{end}}
 
-{{define "rendered"}}{{template "head" .}}
+{{define "body-rendered"}}
   {{template "filelinks" .}}
-  <article class="document">{{.Body}}</article>
-{{template "foot" .}}{{end}}
+  <article class="document">{{.Doc}}</article>
+{{end}}
 
-{{define "relation"}}{{template "head" .}}
+{{define "body-relation"}}
   <h1>The {{.Name}} relation</h1>
   <p><code>{{.Title}}</code></p>
   <p>{{.Text}}</p>
-{{template "foot" .}}{{end}}
+{{end}}
 
-{{define "problem"}}{{template "head" .}}
+{{define "body-problem"}}
   <h1>{{.Title}}</h1>
   <p>{{.Message}}</p>
   <p><a href="/">Go to the start</a></p>
-{{template "foot" .}}{{end}}
+{{end}}
