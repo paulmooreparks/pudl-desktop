@@ -124,6 +124,7 @@
             <li><a href="/">About PUDL Desktop</a></li>
             <li>-</li>
             <li><a href="{{.RootURL}}?view=classic">This workspace as pages</a></li>
+            <li><a href="{{.RootURL}}agent" data-win-open="agent">Connect an agent…</a></li>
           </ul></li>
         <li data-menubar-id="go">Go
           <ul>
@@ -298,6 +299,19 @@
 {{define "body-rendered"}}
   {{template "filelinks" .}}
   <article class="document">{{.Doc}}</article>
+{{end}}
+
+{{define "body-agent"}}
+  <h1>Connect an agent</h1>
+  <p>An AI agent can work in this workspace as you do, through the same pages and forms, and you can watch its changes arrive in your windows. Give it PUDL Desktop's MCP server, with this workspace's token as a bearer token. Anyone holding the token can change this workspace until it expires, so give it only to an agent you trust with it.</p>
+  <table class="kv-table">
+    <tr><th>MCP endpoint</th><td><code>{{.Endpoint}}</code></td></tr>
+    <tr><th>Header</th><td><code>Authorization: Bearer {{.Token}}</code></td></tr>
+    <tr><th>Workspace</th><td><code>{{.Workspace}}</code></td></tr>
+  </table>
+  <p>For Claude Code, the command is:</p>
+  <pre class="code" tabindex="0">claude mcp add --transport http pudl-desktop {{.Endpoint}} --header "Authorization: Bearer {{.Token}}"</pre>
+  <p>Tell the agent to start at <code>{{.Workspace}}</code>. A plain HTTP client can send the same header to any of the workspace's pages.</p>
 {{end}}
 
 {{define "body-relation"}}

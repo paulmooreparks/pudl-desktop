@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/paulmooreparks/pudl-desktop/internal/markdown"
+	"github.com/paulmooreparks/pudl-desktop/internal/mcp"
 	"github.com/paulmooreparks/pudl-desktop/internal/store"
 )
 
@@ -87,6 +88,8 @@ func New(st *store.Store) (*Server, error) {
 	s.mux.HandleFunc("GET /{$}", s.welcome)
 	s.mux.HandleFunc("POST /workspaces", s.startWorkspace)
 	s.mux.HandleFunc("GET /rel/{name}", s.relation)
+	s.mux.Handle("/mcp", mcp.New(s))
+	s.mux.HandleFunc("GET /w/{ws}/agent", s.owned(s.agent))
 	s.mux.HandleFunc("GET /w/{ws}/{$}", s.owned(s.workspaceRoot))
 	s.mux.HandleFunc("GET /w/{ws}/win/{key}", s.owned(s.window))
 	s.mux.HandleFunc("GET /w/{ws}/files/{path...}", s.owned(s.byPath))
@@ -171,18 +174,27 @@ func (s *Server) startWorkspace(w http.ResponseWriter, r *http.Request) {
 
 type ownedHandler func(w http.ResponseWriter, r *http.Request, ws *store.Workspace)
 
-// owned runs a handler only for the browser that owns the workspace. Any
-// other request, including one for a workspace that has expired or never
+// owned runs a handler only for whoever holds the workspace's token: the
+// browser that started it, by its cookie, or an agent or other client the
+// owner gave the token to, as a bearer token. A bearer token is never sent
+// by a browser on its own, so another site cannot borrow it. Any other
+// request, including one for a workspace that has expired or never
 // existed, gets the same 404.
 func (s *Server) owned(h ownedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("ws")
-		c, err := r.Cookie(cookieName(id))
-		if err != nil {
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if token == r.Header.Get("Authorization") {
+			token = ""
+		}
+		if c, err := r.Cookie(cookieName(id)); token == "" && err == nil {
+			token = c.Value
+		}
+		if token == "" {
 			s.notFound(w, r)
 			return
 		}
-		ws, err := s.store.Workspace(r.Context(), id, c.Value)
+		ws, err := s.store.Workspace(r.Context(), id, token)
 		if err != nil {
 			s.notFound(w, r)
 			return
@@ -249,6 +261,9 @@ func (s *Server) workspaceRoot(w http.ResponseWriter, r *http.Request, ws *store
 // what PUDL's windows write in the address, so they hold only letters,
 // digits and hyphens, which entry ids are made of.
 func parseKey(key string) (kind, id, n string) {
+	if key == "agent" {
+		return "agent", "", ""
+	}
 	parts := strings.Split(key, "-")
 	switch {
 	case len(parts) == 2 && (parts[0] == "r" || parts[0] == "edit" || parts[0] == "read" || parts[0] == "hist"):
@@ -274,6 +289,8 @@ func keyURL(ws, key string) string {
 		return base + "/revisions"
 	case "rev":
 		return base + "/revisions/" + n
+	case "agent":
+		return "/w/" + ws + "/agent"
 	}
 	return ""
 }
@@ -300,6 +317,8 @@ func (s *Server) window(w http.ResponseWriter, r *http.Request, ws *store.Worksp
 		s.history(w, r2, ws)
 	case "rev":
 		s.revision(w, r2, ws)
+	case "agent":
+		s.agent(w, r2, ws)
 	default:
 		s.notFound(w, r)
 	}
@@ -319,6 +338,26 @@ func windowed(r *http.Request) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// agent says how to let an AI agent work in this workspace: the MCP
+// endpoint, and the workspace's token to give it as a bearer token. Only
+// the workspace's holder can see the page, and the token is the one they
+// already hold.
+func (s *Server) agent(w http.ResponseWriter, r *http.Request, ws *store.Workspace) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if c, err := r.Cookie(cookieName(ws.ID)); err == nil {
+		token = c.Value
+	}
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	origin := scheme + "://" + r.Host
+	s.render(w, r, http.StatusOK, "agent", map[string]any{
+		"Title": "Connect an agent", "Key": "agent", "Endpoint": origin + "/mcp", "Token": token,
+		"Workspace": origin + "/w/" + ws.ID + "/", "Root": "/w/" + ws.ID + "/r/" + ws.Root,
+	})
 }
 
 // === Addresses =============================================================
