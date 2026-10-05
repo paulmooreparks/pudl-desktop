@@ -41,12 +41,19 @@ const RelBase = "https://pudl.parkscomputing.com/rel/"
 
 // The desktop's own relations, and what each page at RelBase says of it.
 var relations = map[string]string{
-	"create":   "A form on a folder that creates a file or a folder in it. Its fields are name and kind (file or folder).",
-	"save":     "A form that makes a new revision of a file from the text field. Its base field is the revision the text was written against; if the file has moved on since, the change is refused with 409 Conflict and nothing is lost.",
-	"start":    "A form that starts a temporary workspace, which belongs to the browser that started it.",
-	"history":  "The list of a file's revisions, newest first.",
-	"windowed": "A workspace's Windowed view, the desktop, whose windows show its resources; following it makes the Windowed view this browser's choice.",
-	"classic":  "A workspace's Classic view, its resources as pages of their own; following it makes the Classic view this browser's choice.",
+	"create":           "A form on a folder that creates a file or a folder in it. Its fields are name and kind (file or folder).",
+	"save":             "A form that makes a new revision of a file from the text field. Its base field is the revision the text was written against; if the file has moved on since, the change is refused with 409 Conflict and nothing is lost.",
+	"start":            "A form that starts a temporary workspace, which belongs to the browser that started it.",
+	"history":          "The list of a file's revisions, newest first.",
+	"windowed":         "A workspace's Windowed view, the desktop, whose windows show its resources; following it makes the Windowed view this browser's choice.",
+	"classic":          "A workspace's Classic view, its resources as pages of their own; following it makes the Classic view this browser's choice.",
+	"design":           "An HTML document's design: its elements as a tree, each with its path at the revision read, and the operations that change them.",
+	"insert":           "A form that inserts a component from the palette, or markup, before or after the element at path, or first or last inside it. Its fields are path, position (before, after, first or last), component or markup, and base, the revision the path was read at.",
+	"set-attribute":    "A form that sets an attribute of the element at path. Its fields are path, name, value and base.",
+	"remove-attribute": "A form that removes an attribute of the element at path. Its fields are path, name and base.",
+	"set-text":         "A form that makes the words of the element at path its whole content. Its fields are path, text and base.",
+	"move":             "A form that moves the element at path before or after the element at target, or first or last inside it. Its fields are path, target, position and base.",
+	"remove":           "A form that removes the element at path. Its fields are path and base.",
 }
 
 // Server serves the desktop.
@@ -90,6 +97,10 @@ func New(st *store.Store) (*Server, error) {
 	s.mux.HandleFunc("GET /rel/{name}", s.relation)
 	s.mux.Handle("/mcp", mcp.New(s))
 	s.mux.HandleFunc("GET /w/{ws}/agent", s.owned(s.agent))
+	s.mux.HandleFunc("GET /w/{ws}/palette", s.owned(s.paletteView))
+	s.mux.HandleFunc("GET /w/{ws}/r/{id}/design", s.owned(s.designView))
+	s.mux.HandleFunc("GET /w/{ws}/r/{id}/design/{path}", s.owned(s.nodeView))
+	s.mux.HandleFunc("POST /w/{ws}/r/{id}/design/ops/{op}", s.owned(s.operate))
 	s.mux.HandleFunc("GET /w/{ws}/{$}", s.owned(s.workspaceRoot))
 	s.mux.HandleFunc("GET /w/{ws}/win/{key}", s.owned(s.window))
 	s.mux.HandleFunc("GET /w/{ws}/files/{path...}", s.owned(s.byPath))
@@ -261,15 +272,18 @@ func (s *Server) workspaceRoot(w http.ResponseWriter, r *http.Request, ws *store
 // what PUDL's windows write in the address, so they hold only letters,
 // digits and hyphens, which entry ids are made of.
 func parseKey(key string) (kind, id, n string) {
-	if key == "agent" {
-		return "agent", "", ""
+	if key == "agent" || key == "palette" {
+		return key, "", ""
 	}
 	parts := strings.Split(key, "-")
 	switch {
-	case len(parts) == 2 && (parts[0] == "r" || parts[0] == "edit" || parts[0] == "read" || parts[0] == "hist"):
+	case len(parts) == 2 && (parts[0] == "r" || parts[0] == "edit" || parts[0] == "read" || parts[0] == "hist" || parts[0] == "design"):
 		return parts[0], parts[1], ""
 	case len(parts) == 3 && parts[0] == "rev":
 		return parts[0], parts[1], parts[2]
+	case len(parts) == 3 && parts[0] == "node":
+		// A node's path is written with underscores, since keys hold no dots.
+		return parts[0], parts[1], strings.ReplaceAll(parts[2], "_", ".")
 	}
 	return "", "", ""
 }
@@ -291,6 +305,12 @@ func keyURL(ws, key string) string {
 		return base + "/revisions/" + n
 	case "agent":
 		return "/w/" + ws + "/agent"
+	case "palette":
+		return "/w/" + ws + "/palette"
+	case "design":
+		return base + "/design"
+	case "node":
+		return base + "/design/" + n
 	}
 	return ""
 }
@@ -319,6 +339,13 @@ func (s *Server) window(w http.ResponseWriter, r *http.Request, ws *store.Worksp
 		s.revision(w, r2, ws)
 	case "agent":
 		s.agent(w, r2, ws)
+	case "palette":
+		s.paletteView(w, r2, ws)
+	case "design":
+		s.designView(w, r2, ws)
+	case "node":
+		r2.SetPathValue("path", n)
+		s.nodeView(w, r2, ws)
 	default:
 		s.notFound(w, r)
 	}
@@ -508,6 +535,7 @@ func (s *Server) fileLinks(ctx context.Context, f *store.Entry) map[string]any {
 		"Raw": idURL(f) + "/raw", "Rendered": idURL(f) + "/rendered", "Edit": idURL(f) + "/edit",
 		"Key": "r-" + f.ID, "FileKey": "r-" + f.ID, "EditKey": "edit-" + f.ID, "ReadKey": "read-" + f.ID,
 		"HistoryKey": "hist-" + f.ID, "LatestKey": fmt.Sprintf("rev-%s-%d", f.ID, f.Latest),
+		"IsHTML": isHTML(f), "Design": idURL(f) + "/design", "DesignKey": "design-" + f.ID,
 	}
 }
 

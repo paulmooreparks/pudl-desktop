@@ -160,6 +160,63 @@ func TestAgentWalkthrough(t *testing.T) {
 	}
 }
 
+// TestAgentDesigns: an agent builds an applet's markup from the palette
+// through the design pages, and a stale path is refused.
+func TestAgentDesigns(t *testing.T) {
+	hs := newDesktop(t)
+	a := newAgent(t, hs.URL)
+	desk := a.send(a.open("/"), RelBase+"start", nil)
+	file := a.send(desk, RelBase+"create", map[string]string{"name": "applet.html", "kind": "file"})
+	designPage := a.open(a.link(file, RelBase+"design"))
+	if !strings.Contains(designPage.Content[0].Text, "The document is empty.") {
+		t.Fatalf("a new document's design should be empty:\n%s", designPage.Content[0].Text)
+	}
+
+	// A settings panel goes into the empty document, and the result is
+	// the panel's own page.
+	panel := a.send(designPage, RelBase+"insert", map[string]string{"component": "settings-panel", "position": "last"})
+	if panel.Structured.Status != 200 || !strings.Contains(panel.Structured.Page.Title, "div.settings-panel") {
+		t.Fatalf("inserting should show the new element:\n%s", panel.Content[0].Text)
+	}
+	// Its card's title gets new words, found by following the tree.
+	var card, title string
+	for _, l := range panel.Structured.Page.Links {
+		if l.Rel == "item" && strings.Contains(l.Text, "section.card") {
+			card = l.Href
+		}
+	}
+	cardPage := a.open(card)
+	for _, l := range cardPage.Structured.Page.Links {
+		if l.Rel == "item" && strings.Contains(l.Text, "h2.card-title") {
+			title = l.Href
+		}
+	}
+	titlePage := a.open(title)
+	a.send(titlePage, RelBase+"set-text", map[string]string{"text": "Reading"})
+	cardPage = a.open(card)
+	a.send(cardPage, RelBase+"set-attribute", map[string]string{"name": "aria-label", "value": "Reading settings"})
+
+	// The source is plain HTML, with nothing of Studio's in it.
+	src := a.open(strings.TrimSuffix(a.link(file, RelBase+"design"), "/design") + "/raw")
+	for _, s := range []string{`<div class="settings-panel">`, `<section class="card" aria-label="Reading settings">`, `<h2 class="card-title">Reading</h2>`} {
+		if !strings.Contains(src.Content[0].Text, s) {
+			t.Fatalf("want %s in the source:\n%s", s, src.Content[0].Text)
+		}
+	}
+
+	// A form read at an older revision is refused, and changes nothing.
+	// (Sent again with its own submission token, it would be the same
+	// change replayed, which the server answers as it did the first time.)
+	stale := a.send(titlePage, RelBase+"set-text", map[string]string{"text": "Stale", "submission": "another-sending"})
+	if stale.Structured.Status != http.StatusConflict {
+		t.Fatalf("an operation at an old revision should be refused with 409, got %d", stale.Structured.Status)
+	}
+	src = a.open(strings.TrimSuffix(a.link(file, RelBase+"design"), "/design") + "/raw")
+	if strings.Contains(src.Content[0].Text, "Stale") {
+		t.Fatal("the refused operation should change nothing")
+	}
+}
+
 // TestAgentInPersonsWorkspace: a person starts a workspace and gives an
 // agent its token; the agent's change is there for the person.
 func TestAgentInPersonsWorkspace(t *testing.T) {

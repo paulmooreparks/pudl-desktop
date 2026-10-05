@@ -133,6 +133,7 @@
         <li data-menubar-id="applets">Applets
           <ul>
             <li><a href="{{.RootPage}}" data-win-open="{{.RootKey}}">Files</a></li>
+            <li><a href="{{.RootURL}}palette" data-win-open="palette">Palette</a></li>
           </ul></li>
         <li data-menubar-id="view">View
           <ul>
@@ -214,7 +215,122 @@
     <a class="btn" rel="alternate" type="text/html" href="{{.Rendered}}"{{wopen . .ReadKey}}>Read</a>
     <a class="btn" rel="alternate" type="text/markdown" href="{{.Raw}}"{{if .Win}} target="_blank"{{end}}>Markdown source</a>
     <a class="btn" rel="version-history" href="{{.History}}"{{wopen . .HistoryKey}}>Revisions</a>
+    {{if .IsHTML}}<a class="btn" rel="{{rel "design"}}" href="{{.Design}}"{{wopen . .DesignKey}}>Design</a>{{end}}
   </div>
+{{end}}
+
+{{define "op-hidden"}}
+      <input type="hidden" name="submission" value="{{.Submission}}">
+      <input type="hidden" name="base" value="{{.Base}}">
+      <input type="hidden" name="path" value="{{.NodePath}}">
+{{end}}
+
+{{define "op-insert"}}
+  <form rel="{{rel "insert"}}" method="post" action="{{.Ops}}insert" class="form-row">
+    {{template "op-hidden" .}}
+    <div class="form-group">
+      <label class="form-label" for="ins-c-{{.Key}}">Component</label>
+      <span class="form-select-wrap"><select class="form-select" id="ins-c-{{.Key}}" name="component">
+        {{range .Palette}}<optgroup label="{{.Kind}}">{{range .Components}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</optgroup>{{end}}
+      </select></span>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="ins-p-{{.Key}}">Where</label>
+      <span class="form-select-wrap"><select class="form-select" id="ins-p-{{.Key}}" name="position">
+        {{if .NodePath}}<option value="after">After this element</option><option value="before">Before this element</option>{{end}}
+        <option value="last">Inside, last</option><option value="first">Inside, first</option>
+      </select></span>
+    </div>
+    <button class="btn" type="submit">Insert</button>
+  </form>
+{{end}}
+
+{{define "body-palette"}}
+  <h1>Palette</h1>
+  <p>PUDL's components, grouped by the grammar: what is pressed is raised, what takes input is sunken, and what is read is flat. Insert one from a document's Design.</p>
+  {{range .Groups}}
+    <h2>{{.Kind}}</h2>
+    <p class="form-help">{{.About}}</p>
+    <table class="kv-table">
+      {{range .Components}}<tr><th>{{.Name}}</th><td><code>{{.ID}}</code>{{if .Spec}} · <a href="https://github.com/paulmooreparks/pudl-spec/blob/main/spec/{{.Spec}}">specification</a>{{end}}
+        <pre class="code source" tabindex="0">{{.Template}}</pre></td></tr>{{end}}
+    </table>
+  {{end}}
+{{end}}
+
+{{define "body-design"}}
+  <h1>{{.Title}}</h1>
+  {{template "filelinks" .}}
+  {{if .Problem}}<div class="notice danger" role="alert"><div class="notice-content"><p class="notice-body">{{.Problem}}</p></div></div>{{end}}
+  <p class="form-help">Revision {{.Base}}. Each element's address is its path, valid at this revision.</p>
+  <ul class="tree" aria-label="Elements">
+    {{range .Rows}}<li style="margin-inline-start: {{.Depth}}rem"><a rel="item" href="{{.URL}}"{{wopen $ .Key}}><code>{{.Path}}</code> {{.Label}}</a>{{if .Text}} <span class="form-help">“{{.Text}}”</span>{{end}}</li>{{else}}<li>The document is empty.</li>{{end}}
+  </ul>
+  <h2>Add</h2>
+  {{template "op-insert" .}}
+  <h2>Source</h2>
+  <pre class="code source" tabindex="0">{{.Source}}</pre>
+{{end}}
+
+{{define "body-node"}}
+  <h1>{{.Title}}</h1>
+  {{if .Problem}}<div class="notice danger" role="alert"><div class="notice-content"><p class="notice-body">{{.Problem}}</p></div></div>{{end}}
+  <div class="page-actions">
+    <a class="btn" rel="up" href="{{.ParentURL}}"{{wopen . .ParentKey}}>{{if .NodePath}}Parent{{end}}</a>
+    <a class="btn" rel="{{rel "design"}}" href="{{.Design}}"{{wopen . .DesignKey}}>The whole document</a>
+  </div>
+  <table class="kv-table">
+    <tr><th>Path</th><td><code>{{.NodePath}}</code> at revision {{.Base}}</td></tr>
+    <tr><th>Element</th><td><code>{{.Node.Tag}}</code></td></tr>
+    {{if .Node.Text}}<tr><th>Words</th><td>{{.Node.Text}}</td></tr>{{end}}
+  </table>
+
+  <h2>Attributes</h2>
+  <table class="kv-table">
+    {{range .Node.Attrs}}<tr><th><code>{{.Key}}</code></th><td>{{.Val}}
+      <form rel="{{rel "remove-attribute"}}" method="post" action="{{$.Ops}}remove-attribute" style="display:inline">
+        {{template "op-hidden" $}}<input type="hidden" name="name" value="{{.Key}}">
+        <button class="btn btn-sm" type="submit">Remove</button>
+      </form></td></tr>{{else}}<tr><td>None.</td></tr>{{end}}
+  </table>
+  <form rel="{{rel "set-attribute"}}" method="post" action="{{.Ops}}set-attribute" class="form-row">
+    {{template "op-hidden" .}}
+    <div class="form-group"><label class="form-label" for="sa-n-{{.Key}}">Name</label><input class="form-input" id="sa-n-{{.Key}}" name="name" required></div>
+    <div class="form-group"><label class="form-label" for="sa-v-{{.Key}}">Value</label><input class="form-input" id="sa-v-{{.Key}}" name="value"></div>
+    <button class="btn" type="submit">Set</button>
+  </form>
+
+  {{if not .Kids}}
+  <h2>Words</h2>
+  <form rel="{{rel "set-text"}}" method="post" action="{{.Ops}}set-text" class="form-row">
+    {{template "op-hidden" .}}
+    <div class="form-group"><label class="form-label" for="st-{{.Key}}">Words</label><input class="form-input" id="st-{{.Key}}" name="text" value="{{.Node.Text}}"></div>
+    <button class="btn" type="submit">Set</button>
+  </form>
+  {{end}}
+
+  <h2>Inside</h2>
+  <ul class="tree" aria-label="Elements inside">
+    {{range .Kids}}<li><a rel="item" href="{{.URL}}"{{wopen $ .Key}}><code>{{.Path}}</code> {{.Label}}</a>{{if .Text}} <span class="form-help">“{{.Text}}”</span>{{end}}</li>{{else}}<li>Nothing.</li>{{end}}
+  </ul>
+  {{template "op-insert" .}}
+
+  <h2>Move or remove</h2>
+  <form rel="{{rel "move"}}" method="post" action="{{.Ops}}move" class="form-row">
+    {{template "op-hidden" .}}
+    <div class="form-group"><label class="form-label" for="mv-t-{{.Key}}">To the element at path</label><input class="form-input" id="mv-t-{{.Key}}" name="target" required placeholder="0.1"></div>
+    <div class="form-group">
+      <label class="form-label" for="mv-p-{{.Key}}">Where</label>
+      <span class="form-select-wrap"><select class="form-select" id="mv-p-{{.Key}}" name="position">
+        <option value="after">After it</option><option value="before">Before it</option><option value="last">Inside it, last</option><option value="first">Inside it, first</option>
+      </select></span>
+    </div>
+    <button class="btn" type="submit">Move</button>
+  </form>
+  <form rel="{{rel "remove"}}" method="post" action="{{.Ops}}remove">
+    {{template "op-hidden" .}}
+    <button class="btn btn-danger" type="submit">Remove this element</button>
+  </form>
 {{end}}
 
 {{define "body-file"}}
