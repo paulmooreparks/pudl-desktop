@@ -23,6 +23,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8200", "the address to listen on")
 	data := flag.String("data", "data", "the folder that holds the database and the documents")
 	secure := flag.Bool("secure", false, "mark cookies Secure, for serving behind HTTPS")
+	runHost := flag.String("run-host", "", "the host of the separate origin where code built in PS runs")
 	flag.Parse()
 
 	st, err := store.Open(*data)
@@ -35,6 +36,7 @@ func main() {
 		log.Fatal(err)
 	}
 	srv.Secure = *secure
+	srv.RunHost = *runHost
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

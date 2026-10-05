@@ -22,4 +22,4 @@ COPY --from=build --chown=nonroot:nonroot /out/data /data
 VOLUME /data
 EXPOSE 8200
 ENTRYPOINT ["/pudl-desktop", "-addr", ":8200", "-data", "/data"]
-CMD ["-secure"]
+CMD ["-secure", "-run-host", "pudl-run.parkscomputing.com"]

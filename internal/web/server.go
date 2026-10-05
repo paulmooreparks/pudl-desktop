@@ -63,6 +63,9 @@ type Server struct {
 	mux   *http.ServeMux
 	// Secure marks the ownership cookie Secure; true behind HTTPS.
 	Secure bool
+	// RunHost is the origin's host where code built in PS runs, apart
+	// from the desktop, such as pudl-run.parkscomputing.com.
+	RunHost string
 }
 
 func New(st *store.Store) (*Server, error) {
@@ -116,6 +119,14 @@ func New(st *store.Store) (*Server, error) {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The run origin serves only what is built in PS, to be run apart from
+	// the desktop; none of the desktop's own pages answer there, so code
+	// run there can never reach a workspace through them.
+	if s.RunHost != "" && strings.EqualFold(r.Host, s.RunHost) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		http.NotFound(w, r)
+		return
+	}
 	// A change must come from a page of this desktop. The ownership cookie
 	// is SameSite=Lax, so another site's form cannot send it, and a POST
 	// whose Origin is another host is refused as well.
