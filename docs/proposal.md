@@ -19,8 +19,17 @@ Paul decided these on 4 October 2026, after a review of the proposal.
 - **The first design task is the walk-through** that takes one Markdown file from creation through editing, a conflict, export and deletion, through both the browser's HTML forms and the terminal, before any code is written.
 - **PUDL Desktop is also PUDL's conformance harness.** Its coverage manifest maps to the conformance checklists in the PUDL specification, so each scenario it runs is evidence for a checklist item.
 
-Paul added this on 5 October 2026.
+Paul added these on 5 October 2026.
 
+- **The first priority is PUDL Studio, a development tool for applets and sites**, and the rest of PUDL Desktop is built with it. The Markdown work already done keeps its value and resumes after Studio. Studio takes its development model from Visual Basic 6: arrange the interface directly, attach behaviour to it, run it at once, and ship what was built. It owes nothing else to VB6 and is designed from PUDL outward:
+  - The palette is organised by PUDL's grammar, raised for what is pressed, sunken for input and flat for display.
+  - The canvas is a PUDL window in the windowed desktop, shown at desktop and phone widths, and layout is PUDL's own flow of stacks, rows, grids, splitters and tabs.
+  - Behaviour attaches through PUDL's contracts: an applet's commands and menus, and its saved and restored state.
+  - A site is designed as hypermedia, pages whose forms and links address resources, so Classic view and the terminal work with what is built.
+  - A project is plain HTML and JavaScript that reads cleanly by hand, with no format of Studio's own.
+  - Building a project checks it against PUDL's rules, and a gap Studio finds in PUDL goes back to PUDL or the specification as a change.
+  - Code a reader writes runs only in a sandbox outside the desktop's origin.
+- **Studio is driven by a machine-readable list of PUDL's components**, giving each one's markup, attributes, variants, states and grammar category. The list starts in the web repository, which already holds the web contract it formalises; its platform-neutral part moves into the specification when a second implementation needs it.
 - **The desktop has a Windowed view and a Classic view, as parkscomputing.com does.** Windowed is the default: the shell with its menu bar, movable windows and taskbar. Classic is the fallback, made of the same server-rendered pages without the shell, and it is what a browser without scripting, a terminal following links, or a reader who prefers it gets. Every window shows one of those pages, so each window's content has an address that also works as a Classic page. The topbar switches between the two, and a reader's choice of Classic is remembered.
 
 I recommend building **PUDL Desktop** as a separate application with a small, real service underneath it. Its first useful release should let someone work on a document across Files, Editor, Terminal, and a data workbench, save the result, and reopen the workspace from its URL. Add a few good games and a design laboratory so the desktop has both personality and unusually broad interaction coverage.
