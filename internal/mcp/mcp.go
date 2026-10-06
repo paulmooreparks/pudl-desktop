@@ -17,6 +17,7 @@ package mcp
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -192,15 +193,13 @@ func (s *Server) call(w http.ResponseWriter, r *http.Request, req rpcRequest, se
 		return
 	}
 	bearer := r.Header.Get("Authorization")
-	var status int
-	var page *hyper.Page
-	var body string
+	var g got
 	var err error
 	switch p.Name {
 	case "open":
 		var a struct{ URL string }
 		json.Unmarshal(p.Arguments, &a)
-		status, page, body, err = s.fetch(r, sess, bearer, "GET", a.URL, nil)
+		g, err = s.fetch(r, sess, bearer, "GET", a.URL, nil)
 	case "submit":
 		var a struct {
 			Action string            `json:"action"`
@@ -212,7 +211,7 @@ func (s *Server) call(w http.ResponseWriter, r *http.Request, req rpcRequest, se
 		for k, val := range a.Fields {
 			v.Set(k, val)
 		}
-		status, page, body, err = s.fetch(r, sess, bearer, strings.ToUpper(a.Method), a.Action, v)
+		g, err = s.fetch(r, sess, bearer, strings.ToUpper(a.Method), a.Action, v)
 	default:
 		reply(w, req.ID, nil, &rpcError{-32602, "No such tool: " + p.Name})
 		return
@@ -221,23 +220,43 @@ func (s *Server) call(w http.ResponseWriter, r *http.Request, req rpcRequest, se
 		reply(w, req.ID, map[string]any{"content": []map[string]any{{"type": "text", "text": err.Error()}}, "isError": true}, nil)
 		return
 	}
-	result := map[string]any{"content": []map[string]any{{"type": "text", "text": describe(status, page, body)}}}
-	if page != nil {
-		result["structuredContent"] = map[string]any{"status": status, "page": page}
+	// A picture, such as a canvas drawn by the desktop's browser, goes to
+	// the agent as an image, so that it sees what a person would.
+	if strings.HasPrefix(g.ctype, "image/") && g.status == http.StatusOK {
+		mime, _, _ := strings.Cut(g.ctype, ";")
+		reply(w, req.ID, map[string]any{"content": []map[string]any{
+			{"type": "image", "mimeType": strings.TrimSpace(mime), "data": base64.StdEncoding.EncodeToString(g.body)},
+			{"type": "text", "text": fmt.Sprintf("A picture, %s, %d bytes, from %s.", mime, len(g.body), g.url)},
+		}}, nil)
+		return
+	}
+	result := map[string]any{"content": []map[string]any{{"type": "text", "text": describe(g.status, g.page, string(g.body))}}}
+	if g.page != nil {
+		result["structuredContent"] = map[string]any{"status": g.status, "page": g.page}
 	}
 	reply(w, req.ID, result, nil)
 }
 
+// got is what a fetch brought back: a page read for its links and forms
+// when the response was HTML, and its bytes and type otherwise.
+type got struct {
+	status int
+	page   *hyper.Page
+	body   []byte
+	ctype  string
+	url    string
+}
+
 // fetch sends a request to the desktop in this process, as a browser
 // would, and follows redirects with GET, as a browser follows a 303.
-func (s *Server) fetch(r *http.Request, sess *session, bearer, method, target string, form url.Values) (int, *hyper.Page, string, error) {
+func (s *Server) fetch(r *http.Request, sess *session, bearer, method, target string, form url.Values) (got, error) {
 	if method != "GET" && method != "POST" {
-		return 0, nil, "", fmt.Errorf("a form's method is GET or POST, not %q", method)
+		return got{}, fmt.Errorf("a form's method is GET or POST, not %q", method)
 	}
 	for hop := 0; hop < 10; hop++ {
 		u, err := url.Parse(target)
 		if err != nil || (u.Host != "" && u.Host != r.Host) || !strings.HasPrefix(u.Path, "/") {
-			return 0, nil, "", fmt.Errorf("%q is not an address on this desktop", target)
+			return got{}, fmt.Errorf("%q is not an address on this desktop", target)
 		}
 		var body io.Reader
 		if method == "GET" && form != nil {
@@ -284,23 +303,25 @@ func (s *Server) fetch(r *http.Request, sess *session, bearer, method, target st
 		if res.StatusCode >= 300 && res.StatusCode < 400 {
 			loc, err := u.Parse(res.Header.Get("Location"))
 			if err != nil {
-				return 0, nil, "", err
+				return got{}, err
 			}
 			target, method, form = loc.String(), "GET", nil
 			continue
 		}
 		raw, _ := io.ReadAll(res.Body)
-		if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") {
-			return res.StatusCode, nil, string(raw), nil
+		g := got{status: res.StatusCode, body: raw, ctype: res.Header.Get("Content-Type"), url: u.RequestURI()}
+		if !strings.HasPrefix(g.ctype, "text/html") {
+			return g, nil
 		}
 		page, err := hyper.Read(bytes.NewReader(raw), "http://"+r.Host+u.RequestURI())
 		if err != nil {
-			return 0, nil, "", err
+			return got{}, err
 		}
 		page.URL = u.RequestURI()
-		return res.StatusCode, page, "", nil
+		g.page, g.body = page, nil
+		return g, nil
 	}
-	return 0, nil, "", fmt.Errorf("too many redirects from %q", target)
+	return got{}, fmt.Errorf("too many redirects from %q", target)
 }
 
 // describe writes a page out for an agent to read: where it is, what it

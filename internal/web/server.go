@@ -26,6 +26,7 @@ import (
 
 	"github.com/paulmooreparks/pudl-desktop/internal/markdown"
 	"github.com/paulmooreparks/pudl-desktop/internal/mcp"
+	"github.com/paulmooreparks/pudl-desktop/internal/render"
 	"github.com/paulmooreparks/pudl-desktop/internal/store"
 )
 
@@ -54,6 +55,8 @@ var relations = map[string]string{
 	"set-text":         "A form that makes the words of the element at path its whole content. Its fields are path, text and base.",
 	"move":             "A form that moves the element at path before or after the element at target, or first or last inside it. Its fields are path, target, position and base.",
 	"remove":           "A form that removes the element at path. Its fields are path and base.",
+	"canvas":           "An HTML document as it runs, at its latest revision, in frames from the run origin, wide and at a phone's width.",
+	"picture":          "A picture of an HTML document as it runs, drawn by the desktop's own browser, at the width and theme its address gives, so that an agent can see what a person sees.",
 }
 
 // Server serves the desktop.
@@ -63,9 +66,19 @@ type Server struct {
 	mux   *http.ServeMux
 	// Secure marks the ownership cookie Secure; true behind HTTPS.
 	Secure bool
-	// RunHost is the origin's host where code built in PS runs, apart
-	// from the desktop, such as pudl-run.parkscomputing.com.
-	RunHost string
+	// RunHosts are the hosts of the run origin, where what is built in PS
+	// runs apart from the desktop: its public name, such as
+	// pudl-run.parkscomputing.com, and the address the service's own
+	// browser reaches it at. RunOrigin is the public origin, for the
+	// canvas's frames, and RenderBase the origin the browser draws from.
+	RunHosts   []string
+	RunOrigin  string
+	RenderBase string
+	// Renderer draws pictures of the canvas; nil draws none.
+	Renderer *render.Renderer
+
+	previewKey []byte
+	runMux     *http.ServeMux
 }
 
 func New(st *store.Store) (*Server, error) {
@@ -92,7 +105,12 @@ func New(st *store.Store) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{store: st, pages: pages, mux: http.NewServeMux()}
+	key, err := st.Secret("preview")
+	if err != nil {
+		return nil, err
+	}
+	s := &Server{store: st, pages: pages, mux: http.NewServeMux(), previewKey: key}
+	s.runMux = s.runRoutes()
 	static, _ := fs.Sub(staticFS, "static")
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	s.mux.HandleFunc("GET /{$}", s.welcome)
@@ -104,6 +122,9 @@ func New(st *store.Store) (*Server, error) {
 	s.mux.HandleFunc("GET /w/{ws}/r/{id}/design", s.owned(s.designView))
 	s.mux.HandleFunc("GET /w/{ws}/r/{id}/design/{path}", s.owned(s.nodeView))
 	s.mux.HandleFunc("POST /w/{ws}/r/{id}/design/ops/{op}", s.owned(s.operate))
+	s.mux.HandleFunc("GET /w/{ws}/r/{id}/canvas", s.owned(s.canvasView))
+	s.mux.HandleFunc("GET /w/{ws}/r/{id}/canvas.png", s.owned(s.picture))
+	s.mux.HandleFunc("GET /w/{ws}/r/{id}/latest", s.owned(s.latest))
 	s.mux.HandleFunc("GET /w/{ws}/{$}", s.owned(s.workspaceRoot))
 	s.mux.HandleFunc("GET /w/{ws}/win/{key}", s.owned(s.window))
 	s.mux.HandleFunc("GET /w/{ws}/files/{path...}", s.owned(s.byPath))
@@ -122,9 +143,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The run origin serves only what is built in PS, to be run apart from
 	// the desktop; none of the desktop's own pages answer there, so code
 	// run there can never reach a workspace through them.
-	if s.RunHost != "" && strings.EqualFold(r.Host, s.RunHost) {
+	if s.isRunHost(r.Host) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		http.NotFound(w, r)
+		s.runMux.ServeHTTP(w, r)
 		return
 	}
 	// A change must come from a page of this desktop. The ownership cookie
@@ -288,7 +309,7 @@ func parseKey(key string) (kind, id, n string) {
 	}
 	parts := strings.Split(key, "-")
 	switch {
-	case len(parts) == 2 && (parts[0] == "r" || parts[0] == "edit" || parts[0] == "read" || parts[0] == "hist" || parts[0] == "design"):
+	case len(parts) == 2 && (parts[0] == "r" || parts[0] == "edit" || parts[0] == "read" || parts[0] == "hist" || parts[0] == "design" || parts[0] == "canvas"):
 		return parts[0], parts[1], ""
 	case len(parts) == 3 && parts[0] == "rev":
 		return parts[0], parts[1], parts[2]
@@ -320,6 +341,8 @@ func keyURL(ws, key string) string {
 		return "/w/" + ws + "/palette"
 	case "design":
 		return base + "/design"
+	case "canvas":
+		return base + "/canvas"
 	case "node":
 		return base + "/design/" + n
 	}
@@ -354,6 +377,8 @@ func (s *Server) window(w http.ResponseWriter, r *http.Request, ws *store.Worksp
 		s.paletteView(w, r2, ws)
 	case "design":
 		s.designView(w, r2, ws)
+	case "canvas":
+		s.canvasView(w, r2, ws)
 	case "node":
 		r2.SetPathValue("path", n)
 		s.nodeView(w, r2, ws)
@@ -547,6 +572,10 @@ func (s *Server) fileLinks(ctx context.Context, f *store.Entry) map[string]any {
 		"Key": "r-" + f.ID, "FileKey": "r-" + f.ID, "EditKey": "edit-" + f.ID, "ReadKey": "read-" + f.ID,
 		"HistoryKey": "hist-" + f.ID, "LatestKey": fmt.Sprintf("rev-%s-%d", f.ID, f.Latest),
 		"IsHTML": isHTML(f), "Design": idURL(f) + "/design", "DesignKey": "design-" + f.ID,
+		"Canvas": idURL(f) + "/canvas", "CanvasKey": "canvas-" + f.ID,
+		// A window showing the file follows its revisions; an editor does
+		// not, so as not to take text from under the writer.
+		"Watch": idURL(f) + "/latest", "WatchRev": f.Latest,
 	}
 }
 
@@ -583,6 +612,7 @@ func (s *Server) editForm(w http.ResponseWriter, r *http.Request, ws *store.Work
 func (s *Server) showEdit(w http.ResponseWriter, r *http.Request, f *store.Entry, status, base int, text, problem string) {
 	data := s.fileLinks(r.Context(), f)
 	data["Title"] = "Edit " + f.Name
+	delete(data, "Watch")
 	data["Key"] = "edit-" + f.ID
 	data["Base"], data["Text"], data["Problem"] = base, text, problem
 	data["Submission"] = store.NewID(16)
@@ -638,6 +668,7 @@ func (s *Server) showConflict(w http.ResponseWriter, r *http.Request, f *store.E
 	}
 	data := s.fileLinks(r.Context(), f)
 	data["Title"] = "Conflict in " + f.Name
+	delete(data, "Watch")
 	data["Key"] = "edit-" + f.ID
 	data["Conflict"], data["LatestText"], data["Text"] = c, string(latest), text
 	data["Base"] = c.Latest

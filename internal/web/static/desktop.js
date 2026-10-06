@@ -24,6 +24,43 @@
     if (title && window.pudlWindows) window.pudlWindows.retitle(win.getAttribute('data-win'), title.textContent.trim());
   }
 
+  /* A window showing a file says where its latest revision number is, in
+     data-watch, and the revision it shows, in data-revision. While it is
+     showing, it checks every two seconds, and when the file has moved on,
+     because an agent or another window changed it, it takes its content
+     afresh from its own address. An editor does not watch, so nothing is
+     taken from under a writer. */
+  var WATCH_MS = 2000;
+  function refresh(win) {
+    var layer = document.querySelector('[data-win-layer]');
+    var src = layer && layer.getAttribute('data-win-src');
+    if (!src) return Promise.resolve();
+    var key = win.getAttribute('data-win');
+    return fetch(src.split('{key}').join(encodeURIComponent(key)), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (text) {
+        if (!text || !win.isConnected) return;
+        var fresh = new DOMParser().parseFromString(text, 'text/html').querySelector('section.win[data-win]');
+        if (!fresh) return;
+        swapInto(win, fresh);
+        win.setAttribute('data-revision', fresh.getAttribute('data-revision') || '');
+      });
+  }
+  function watch() {
+    document.querySelectorAll('.win[data-watch]').forEach(function (win) {
+      if (win.hidden || win.hasAttribute('aria-busy') || win.__checking) return;
+      win.__checking = true;
+      fetch(win.getAttribute('data-watch'), { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.text() : null; })
+        .then(function (rev) {
+          if (rev !== null && rev.trim() !== win.getAttribute('data-revision')) return refresh(win);
+        })
+        .catch(function () {})
+        .then(function () { win.__checking = false; });
+    });
+  }
+  setInterval(function () { if (!document.hidden) watch(); }, WATCH_MS);
+
   document.addEventListener('submit', function (e) {
     var form = e.target;
     var win = form.closest && form.closest('.win[data-win]');

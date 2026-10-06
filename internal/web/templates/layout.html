@@ -31,6 +31,12 @@
     .win-body > .win-content { padding: var(--space-4); }
     .win-body > .win-content > h1 { display: none; }
     .win-body textarea.source { min-height: 16rem; }
+    /* The canvas: the document as it runs, wide and at a phone's width. */
+    .canvas-frames { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-start; margin-top: var(--space-3); }
+    .canvas-frames figure { margin: 0; flex: 1 1 24rem; min-width: 0; }
+    .canvas-frames figure:has(.phone) { flex: 0 0 auto; }
+    .canvas-frame { display: block; width: 100%; height: 28rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
+    .canvas-frame.phone { width: 390px; max-width: 100%; }
   </style>
 {{end}}
 
@@ -74,7 +80,7 @@
 </html>
 {{end}}
 
-{{define "window"}}<section class="win" data-win="{{.Key}}" aria-labelledby="win-{{.Key}}-title">
+{{define "window"}}<section class="win" data-win="{{.Key}}" aria-labelledby="win-{{.Key}}-title"{{if .Watch}} data-watch="{{.Watch}}" data-revision="{{.WatchRev}}"{{end}}>
   <header class="win-head">
     <h2 class="win-title" id="win-{{.Key}}-title">{{.Title}}</h2>
     <nav class="win-chrome" aria-label="Window">
@@ -215,7 +221,8 @@
     <a class="btn" rel="alternate" type="text/html" href="{{.Rendered}}"{{wopen . .ReadKey}}>Read</a>
     <a class="btn" rel="alternate" type="text/markdown" href="{{.Raw}}"{{if .Win}} target="_blank"{{end}}>Markdown source</a>
     <a class="btn" rel="version-history" href="{{.History}}"{{wopen . .HistoryKey}}>Revisions</a>
-    {{if .IsHTML}}<a class="btn" rel="{{rel "design"}}" href="{{.Design}}"{{wopen . .DesignKey}}>Design</a>{{end}}
+    {{if .IsHTML}}<a class="btn" rel="{{rel "design"}}" href="{{.Design}}"{{wopen . .DesignKey}}>Design</a>
+    <a class="btn" rel="{{rel "canvas"}}" href="{{.Canvas}}"{{wopen . .CanvasKey}}>Canvas</a>{{end}}
   </div>
 {{end}}
 
@@ -428,6 +435,50 @@
   <p>For Claude Code, the command is:</p>
   <pre class="code" tabindex="0">claude mcp add --transport http pudl-desktop {{.Endpoint}} --header "Authorization: Bearer {{.Token}}"</pre>
   <p>Tell the agent to start at <code>{{.Workspace}}</code>. A plain HTTP client can send the same header to any of the workspace's pages.</p>
+{{end}}
+
+{{define "body-canvas"}}
+  <h1>{{.Title}}</h1>
+  {{template "filelinks" .}}
+  <div class="hstack align-center">
+    <span class="form-help">Revision {{.File.Latest}}, {{.Theme}} theme.</span>
+    <a class="btn btn-sm" rel="alternate" href="{{.Canvas}}?theme={{.Other}}"{{wopen . .CanvasKey}}>Show the {{.Other}} theme</a>
+    <a class="btn btn-sm" rel="{{rel "picture"}}" type="image/png" href="{{.Picture}}" target="_blank">Picture</a>
+    <a class="btn btn-sm" rel="{{rel "picture"}}" type="image/png" href="{{.PhonePicture}}" target="_blank">Picture at phone width</a>
+    {{if .Frame}}<a class="btn btn-sm" rel="preview noopener" href="{{.Frame}}" target="_blank">Run in its own tab</a>{{end}}
+  </div>
+  {{if .Frame}}
+  <div class="canvas-frames">
+    <figure><figcaption class="form-help">Wide</figcaption>
+      <iframe class="canvas-frame" src="{{.Frame}}" title="{{.File.Name}}, wide" sandbox="allow-scripts" loading="lazy"></iframe></figure>
+    <figure><figcaption class="form-help">Phone, 390px</figcaption>
+      <iframe class="canvas-frame phone" src="{{.Frame}}" title="{{.File.Name}}, at phone width" sandbox="allow-scripts" loading="lazy"></iframe></figure>
+  </div>
+  {{else}}<p>This desktop has no run origin, so the canvas cannot be shown here.</p>{{end}}
+{{end}}
+
+{{/* A document's revision as a page of its own on the run origin: PUDL
+     and the document, nothing of the desktop's. */}}
+{{define "preview"}}<!doctype html>
+<html lang="en" data-theme="{{.Theme}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/static/pudl/pudl.css">
+  <script src="/static/pudl/pudl-menu.js" defer></script>
+  <script src="/static/pudl/pudl-tabs.js" defer></script>
+  <script src="/static/pudl/pudl-tooltip.js" defer></script>
+  <script src="/static/pudl/pudl-toast.js" defer></script>
+  <script src="/static/pudl/pudl-split.js" defer></script>
+  <script src="/static/pudl/pudl-tree.js" defer></script>
+  <script src="/static/pudl/pudl-dialog.js" defer></script>
+  <style>body { margin: 0; padding: var(--space-4); background: var(--bg); color: var(--text); }</style>
+</head>
+<body>
+{{.Doc}}
+</body>
+</html>
 {{end}}
 
 {{define "body-relation"}}

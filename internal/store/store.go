@@ -149,6 +149,24 @@ func Open(data string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// Secret returns a secret of the service's own, made the first time it is
+// asked for and kept in the data folder, so that what it signs stays
+// valid across restarts.
+func (s *Store) Secret(name string) ([]byte, error) {
+	path := filepath.Join(s.data, name+".key")
+	if b, err := os.ReadFile(path); err == nil && len(b) == 32 {
+		return b, nil
+	}
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
 // NewID returns a random identifier of n bytes, written in lowercase
 // base-32 without padding.
 func NewID(n int) string {
