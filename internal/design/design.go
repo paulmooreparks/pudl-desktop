@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -206,6 +207,88 @@ func (d *Doc) node(n *html.Node, deep bool) Node {
 		}
 	}
 	return nd
+}
+
+// Find returns the path of the first element, in document order, that
+// matches a CSS selector: the element at path itself, or one inside it.
+// It returns the empty string and no error where none matches.
+func (d *Doc) Find(path, selector string) (string, error) {
+	n, err := d.find(path)
+	if err != nil || n == d.root {
+		return "", ErrPath
+	}
+	sel, err := cascadia.Compile(selector)
+	if err != nil {
+		return "", fmt.Errorf("%q is not a selector: %w", selector, err)
+	}
+	if sel.Match(n) {
+		return path, nil
+	}
+	if m := sel.MatchFirst(n); m != nil {
+		return d.PathOf(m), nil
+	}
+	return "", nil
+}
+
+// Matches says whether the element at path matches a CSS selector.
+func (d *Doc) Matches(path, selector string) (bool, error) {
+	n, err := d.find(path)
+	if err != nil || n == d.root {
+		return false, ErrPath
+	}
+	sel, err := cascadia.Compile(selector)
+	if err != nil {
+		return false, fmt.Errorf("%q is not a selector: %w", selector, err)
+	}
+	return sel.Match(n), nil
+}
+
+// Attr returns an attribute of the element at path, and whether it has it.
+func (d *Doc) Attr(path, name string) (string, bool) {
+	n, err := d.find(path)
+	if err != nil || n == d.root {
+		return "", false
+	}
+	for _, a := range n.Attr {
+		if a.Namespace == "" && a.Key == strings.ToLower(name) {
+			return a.Val, true
+		}
+	}
+	return "", false
+}
+
+// HasClass says whether the element at path has a class.
+func (d *Doc) HasClass(path, class string) bool {
+	v, _ := d.Attr(path, "class")
+	for _, c := range strings.Fields(v) {
+		if c == class {
+			return true
+		}
+	}
+	return false
+}
+
+// SetClass adds a class to the element at path, or takes it away, keeping
+// its other classes in their order. An element left with no class loses
+// the attribute.
+func (d *Doc) SetClass(path, class string, on bool) error {
+	if strings.ContainsAny(class, " \t\n\f\r") || class == "" {
+		return fmt.Errorf("%q is not a class name", class)
+	}
+	v, _ := d.Attr(path, "class")
+	var kept []string
+	for _, c := range strings.Fields(v) {
+		if c != class {
+			kept = append(kept, c)
+		}
+	}
+	if on {
+		kept = append(kept, class)
+	}
+	if len(kept) == 0 {
+		return d.RemoveAttr(path, "class")
+	}
+	return d.SetAttr(path, "class", strings.Join(kept, " "))
 }
 
 var attrName = regexp.MustCompile(`^[a-zA-Z_:][-a-zA-Z0-9_:.]*$`)

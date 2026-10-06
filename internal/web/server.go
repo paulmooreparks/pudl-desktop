@@ -55,7 +55,8 @@ var relations = map[string]string{
 	"set-text":         "A form that makes the words of the element at path its whole content. Its fields are path, text and base.",
 	"move":             "A form that moves the element at path before or after the element at target, or first or last inside it. Its fields are path, target, position and base.",
 	"remove":           "A form that removes the element at path. Its fields are path and base.",
-	"canvas":           "An HTML document as it runs, at its latest revision, in frames from the run origin, wide and at a phone's width.",
+	"properties":       "A form that sets the variants and states of one PUDL component an element is. A variant on its own is a checkbox named variant:<class>; a choice among alternatives is a field named group:<name> whose value is the chosen class, empty for none; a state is a checkbox named state:<n>. A checkbox left out, or sent empty, is off. Its other fields are component, path and base.",
+	"canvas":         "An HTML document as it runs, at its latest revision, in frames from the run origin, wide and at a phone's width.",
 	"picture":          "A picture of an HTML document as it runs, drawn by the desktop's own browser, at the width and theme its address gives, so that an agent can see what a person sees.",
 }
 

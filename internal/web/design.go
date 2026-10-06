@@ -29,6 +29,32 @@ type component struct {
 	Spec     string `json:"spec"`
 	Template string `json:"template"`
 	Context  string `json:"context"`
+	Parts    []struct {
+		Selector string `json:"selector"`
+	} `json:"parts"`
+	Variants []variant `json:"variants"`
+	States   []state   `json:"states"`
+}
+
+// A variant is a class that changes how a component looks. Variants with a
+// group are alternatives; one that replaces a class takes its place.
+type variant struct {
+	Name     string `json:"name"`
+	Class    string `json:"class"`
+	Group    string `json:"group"`
+	Replaces string `json:"replaces"`
+	On       string `json:"on"`
+}
+
+// A state is an attribute that says what condition a component is in. On,
+// it has its value (none, for a boolean attribute); off, it has its off
+// value or is gone.
+type state struct {
+	Name      string `json:"name"`
+	Attribute string `json:"attribute"`
+	Value     string `json:"value"`
+	Off       string `json:"off"`
+	On        string `json:"on"`
 }
 
 type componentList struct {
@@ -206,6 +232,7 @@ func (s *Server) showNode(w http.ResponseWriter, r *http.Request, f *store.Entry
 		kids = append(kids, treeRow{0, c.Path, nodeKey(f.ID, c.Path), s.designURL(f, c.Path), design.Describe(c), c.Text})
 	}
 	data["Kids"] = kids
+	data["Props"] = propForms(d, path)
 	data["Problem"] = problem
 	s.opForms(data, f, path)
 	s.render(w, r, status, "node", data)
@@ -255,6 +282,11 @@ func (s *Server) operate(w http.ResponseWriter, r *http.Request, ws *store.Works
 			err = d.SetAttr(path, r.FormValue("name"), r.FormValue("value"))
 		case "remove-attribute":
 			err = d.RemoveAttr(path, r.FormValue("name"))
+		case "properties":
+			if path == "" {
+				return nil, fmt.Errorf("%w: the document as a whole has no properties", errOp)
+			}
+			err = setProperties(d, path, r.PostForm)
 		case "set-text":
 			err = d.SetText(path, strings.ReplaceAll(r.FormValue("text"), "\r\n", "\n"))
 		case "insert":

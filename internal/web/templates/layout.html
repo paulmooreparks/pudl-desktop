@@ -292,6 +292,25 @@
     {{if .Node.Text}}<tr><th>Words</th><td>{{.Node.Text}}</td></tr>{{end}}
   </table>
 
+  {{range $i, $p := .Props}}
+  <h2>{{$p.Component.Name}} properties</h2>
+  <form rel="{{rel "properties"}}" method="post" action="{{$.Ops}}properties" class="vstack">
+    {{template "op-hidden" $}}<input type="hidden" name="component" value="{{$p.Component.ID}}">
+    {{range $g := $p.Groups}}
+    <fieldset class="form-fieldset"><legend>{{$g.Name}}</legend><div class="form-options inline">
+      {{range $g.Choices}}<label class="check"><input type="radio" name="{{$g.Field}}" value="{{.Value}}"{{if .Checked}} checked{{end}}> {{.Label}}</label>{{end}}
+    </div></fieldset>
+    {{end}}
+    {{if or $p.Variants $p.States}}
+    <fieldset class="form-fieldset"><legend>Variants and states</legend><div class="form-options">
+      {{range $p.Variants}}<label class="check"><input type="checkbox" name="{{.Field}}" value="on"{{if .Checked}} checked{{end}}> {{.Label}}</label>{{end}}
+      {{range $p.States}}<label class="check"><input type="checkbox" name="{{.Field}}" value="on"{{if .Checked}} checked{{end}}> {{.Label}} <code class="form-help">{{.Help}}</code></label>{{end}}
+    </div></fieldset>
+    {{end}}
+    <div class="hstack"><button class="btn btn-primary" type="submit">Set properties</button></div>
+  </form>
+  {{end}}
+
   <h2>Attributes</h2>
   <table class="kv-table">
     {{range .Node.Attrs}}<tr><th><code>{{.Key}}</code></th><td>{{.Val}}
