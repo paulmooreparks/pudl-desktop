@@ -8,5 +8,5 @@
 (function () {
     'use strict';
     if (!window.pudlHostKit) { return; }
-    window.pudlHost = window.pudlHostKit.host({ pages: '/app/' });
+    window.pudlHost = window.pudlHostKit.host({ pages: '/app/', pudl: '/static/pudl/' });
 })();

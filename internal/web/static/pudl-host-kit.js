@@ -1,5 +1,5 @@
 /* Copyright 2026 Paul Parks. SPDX-License-Identifier: Apache-2.0 */
-/* pudl-host-kit 0.2.0: what every host gives a packaged applet, written
+/* pudl-host-kit 0.3.0: what every host gives a packaged applet, written
    once (README.md, "The host interface"). A host loads this before its own
    applet registry and builds window.pudlHost from it:
 
@@ -17,6 +17,9 @@
                                         a menu item that presses a button in
                                         the applet, disabled as the button is
      pudlHost.pages                     where applet pages are, such as /page/
+     pudlHost.pudl                      where the host's PUDL release is, such
+                                        as /pudl/, for a document of the
+                                        applet's own that needs PUDL
      pudlHost.snapshot                  join(root, take) and leave, state kept
                                         across a reload (optional)
      pudlHost.fs                        readText(path), writeText(path, text)
@@ -98,7 +101,7 @@
        pudlHost's members as given. */
     function host(given) {
         var named = (given && given.services) || {};
-        var h = { identity: identity, action: action, pages: '/page/', service: function (name) {
+        var h = { identity: identity, action: action, pages: '/page/', pudl: '/pudl/', service: function (name) {
             return Object.prototype.hasOwnProperty.call(named, name) ? named[name] : null;
         } };
         Object.keys(given || {}).forEach(function (k) { if (k !== 'services' && given[k] != null) { h[k] = given[k]; } });
@@ -129,5 +132,5 @@
             });
     }
 
-    window.pudlHostKit = { version: '0.2.0', identity: identity, action: action, host: host, install: install, defineFrom: defineFrom };
+    window.pudlHostKit = { version: '0.3.0', identity: identity, action: action, host: host, install: install, defineFrom: defineFrom };
 })();
