@@ -1,9 +1,10 @@
 /* Copyright 2026 Paul Parks. SPDX-License-Identifier: Apache-2.0 */
-/* pudl-host-kit 0.1.0: what every host gives a packaged applet, written
+/* pudl-host-kit 0.2.0: what every host gives a packaged applet, written
    once (README.md, "The host interface"). A host loads this before its own
    applet registry and builds window.pudlHost from it:
 
-     window.pudlHost = pudlHostKit.host({ snapshot: ..., fs: ..., config: ..., pages: '/page/' });
+     window.pudlHost = pudlHostKit.host({ snapshot: ..., fs: ..., config: ..., pages: '/page/',
+                                          services: { 'barcode-products': '/api/barcode-products/' } });
 
    An applet reads pudlHost and uses what is there; a service that is
    missing is a service the host does not have, and the applet does without.
@@ -19,9 +20,34 @@
      pudlHost.snapshot                  join(root, take) and leave, state kept
                                         across a reload (optional)
      pudlHost.fs                        readText(path), writeText(path, text)
-                                        and mkdir(path) under ~ (optional)
+                                        and mkdir(path) under ~ (optional),
+                                        and, where the host has dialogs for
+                                        them, open(options) and save(options)
+                                        (each optional within fs) and
+                                        onChange(fn) (below)
      pudlHost.config                    load, get, set, onChange for the
                                         applet's settings (optional)
+     pudlHost.service(name)             the address of a service the host
+                                        offers under that name, ending in /,
+                                        or null where it offers none
+
+   The file dialogs are the host's own, so files come from and go to
+   wherever the host keeps them, and the reader's computer where it offers
+   that:
+
+     fs.open({ title, accept: ['.json'], start: '~', host: root,
+               check: function (path) { return reason or null; } })
+       resolves to { path, name, text } for a file of the host's, { name,
+       text } for one from the reader's computer, or null if cancelled.
+     fs.save({ title, name, blob, start: '~', host: root,
+               check: function (path) { return reason or null; } })
+       writes blob where the reader chooses and resolves to { path }, to
+       { download: name } when the reader downloaded it instead, or to null
+       if cancelled; it rejects with the reason a write failed. A host that
+       keeps only text offers a picture as a download.
+     fs.onChange(fn)
+       calls fn() after any file of the host's changes, here or in another
+       tab, and returns a function that stops it.
 
    A page with no server installs a package itself:
 
@@ -68,9 +94,14 @@
         } };
     }
 
-    function host(services) {
-        var h = { identity: identity, action: action, pages: '/page/' };
-        Object.keys(services || {}).forEach(function (k) { if (services[k] != null) { h[k] = services[k]; } });
+    /* services, the named addresses, becomes service(name); the rest are
+       pudlHost's members as given. */
+    function host(given) {
+        var named = (given && given.services) || {};
+        var h = { identity: identity, action: action, pages: '/page/', service: function (name) {
+            return Object.prototype.hasOwnProperty.call(named, name) ? named[name] : null;
+        } };
+        Object.keys(given || {}).forEach(function (k) { if (k !== 'services' && given[k] != null) { h[k] = given[k]; } });
         return h;
     }
 
@@ -98,5 +129,5 @@
             });
     }
 
-    window.pudlHostKit = { version: '0.1.0', identity: identity, action: action, host: host, install: install, defineFrom: defineFrom };
+    window.pudlHostKit = { version: '0.2.0', identity: identity, action: action, host: host, install: install, defineFrom: defineFrom };
 })();
