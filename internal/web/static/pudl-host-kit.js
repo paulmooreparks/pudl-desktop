@@ -1,5 +1,5 @@
 /* Copyright 2026 Paul Parks. SPDX-License-Identifier: Apache-2.0 */
-/* pudl-host-kit 0.3.0: what every host gives a packaged applet, written
+/* pudl-host-kit 0.4.0: what every host gives a packaged applet, written
    once (README.md, "The host interface"). A host loads this before its own
    applet registry and builds window.pudlHost from it:
 
@@ -33,6 +33,12 @@
      pudlHost.service(name)             the address of a service the host
                                         offers under that name, ending in /,
                                         or null where it offers none
+     pudlHost.fetch(url, init)          fetch, as the host's own pages call
+                                        its server: with whatever a request
+                                        from them carries, such as a token
+                                        against forgery; plain fetch, on the
+                                        same origin's credentials, where the
+                                        host asks nothing more
 
    The file dialogs are the host's own, so files come from and go to
    wherever the host keeps them, and the reader's computer where it offers
@@ -103,7 +109,7 @@
         var named = (given && given.services) || {};
         var h = { identity: identity, action: action, pages: '/page/', pudl: '/pudl/', service: function (name) {
             return Object.prototype.hasOwnProperty.call(named, name) ? named[name] : null;
-        } };
+        }, fetch: function (url, init) { return window.fetch(url, Object.assign({ credentials: 'same-origin' }, init || {})); } };
         Object.keys(given || {}).forEach(function (k) { if (k !== 'services' && given[k] != null) { h[k] = given[k]; } });
         return h;
     }
@@ -132,5 +138,5 @@
             });
     }
 
-    window.pudlHostKit = { version: '0.3.0', identity: identity, action: action, host: host, install: install, defineFrom: defineFrom };
+    window.pudlHostKit = { version: '0.4.0', identity: identity, action: action, host: host, install: install, defineFrom: defineFrom };
 })();
