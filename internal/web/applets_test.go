@@ -130,8 +130,9 @@ func TestAppletPackagesDesktop(t *testing.T) {
 	if menu != "Hello /applets/hello/icon.svg" {
 		t.Errorf("the Applets menu lists the package with its icon; got %q", menu)
 	}
+	must(t, wait(ctx, `document.querySelector('.menubar-front .menubar-title')`))
 	must(t, chromedp.Do(ctx, chromedp.Click(chromedp.CSS(`.menubar-front .menubar-title`))))
-	must(t, wait(ctx, `document.querySelector('#menubar-panel')`))
+	must(t, wait(ctx, `document.querySelector('#menubar-panel') && document.querySelector('#menubar-panel').innerText.includes('Wave')`))
 	front, err := js(ctx, `document.querySelector('#menubar-panel').innerText`)
 	must(t, err)
 	if !strings.Contains(front, "Wave") || !strings.Contains(front, "Open as a page") {
