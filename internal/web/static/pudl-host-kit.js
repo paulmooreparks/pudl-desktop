@@ -1,5 +1,5 @@
 /* Copyright 2026 Paul Parks. SPDX-License-Identifier: Apache-2.0 */
-/* pudl-host-kit 0.4.0: what every host gives a packaged applet, written
+/* pudl-host-kit 0.5.0: what every host gives a packaged applet, written
    once (README.md, "The host interface"). A host loads this before its own
    applet registry and builds window.pudlHost from it:
 
@@ -33,6 +33,12 @@
      pudlHost.service(name)             the address of a service the host
                                         offers under that name, ending in /,
                                         or null where it offers none
+     pudlHost.actions                   run(ref, input): runs an action an
+                                        applet of the host publishes, such
+                                        as parks.dice/roll@1, through the
+                                        host's own broker, opening a window
+                                        where the action needs one, and
+                                        resolves to its output (optional)
      pudlHost.fetch(url, init)          fetch, as the host's own pages call
                                         its server: with whatever a request
                                         from them carries, such as a token
@@ -57,6 +63,10 @@
      fs.onChange(fn)
        calls fn() after any file of the host's changes, here or in another
        tab, and returns a function that stops it.
+     fs.find(query, limit)
+       resolves to the host's files whose names hold the query, as
+       [{ path, name, kind }], kind being file, page or dir, at most limit
+       of them (optional within fs).
 
    A page with no server installs a package itself:
 
@@ -138,5 +148,5 @@
             });
     }
 
-    window.pudlHostKit = { version: '0.4.0', identity: identity, action: action, host: host, install: install, defineFrom: defineFrom };
+    window.pudlHostKit = { version: '0.5.0', identity: identity, action: action, host: host, install: install, defineFrom: defineFrom };
 })();
