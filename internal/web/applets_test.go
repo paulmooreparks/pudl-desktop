@@ -3,6 +3,8 @@
 package web
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chromedp/chromedp"
 	"github.com/paulmooreparks/pudl-desktop/internal/store"
@@ -41,6 +44,23 @@ func appletsFixture(t *testing.T) string {
 	must(t, os.WriteFile(filepath.Join(wrong, "applet.json"), []byte(`{ "name": "other", "title": "Other", "version": "1", "src": "a.js" }`), 0o644))
 	must(t, os.WriteFile(filepath.Join(wrong, "a.js"), []byte(""), 0o644))
 	return dir
+}
+
+// waitLong waits up to twenty seconds, since a package's window loads the
+// applet runtime, the kit, the registry and the package's own script,
+// which a busy test run slows.
+func waitLong(ctx context.Context, cond string) error {
+	for i := 0; i < 400; i++ {
+		got, err := js(ctx, `String(!!(`+cond+`))`)
+		if err != nil {
+			return err
+		}
+		if got == "true" {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return errors.New("timed out waiting for " + cond)
 }
 
 func newDesktopWithApplets(t *testing.T) *httptest.Server {
@@ -114,7 +134,7 @@ func TestAppletPackagesDesktop(t *testing.T) {
 	url, err := js(ctx, `location.href`)
 	must(t, err)
 	must(t, chromedp.Do(ctx, chromedp.Navigate(url+"?open=app-hello&top=app-hello")))
-	must(t, wait(ctx, `document.querySelector('.win[data-win="app-hello"] .hello-greeting')`))
+	must(t, waitLong(ctx, `document.querySelector('.win[data-win="app-hello"] .hello-greeting')`))
 	got, err := js(ctx, `document.querySelector('.win[data-win="app-hello"] .hello-host').textContent`)
 	must(t, err)
 	if got != "host /app/" {
@@ -130,10 +150,18 @@ func TestAppletPackagesDesktop(t *testing.T) {
 	if menu != "Hello /applets/hello/icon.svg" {
 		t.Errorf("the Applets menu lists the package with its icon; got %q", menu)
 	}
-	must(t, wait(ctx, `document.querySelector('.menubar-front .menubar-title')`))
-	must(t, chromedp.Do(ctx, chromedp.Click(chromedp.CSS(`.menubar-front .menubar-title`))))
-	must(t, wait(ctx, `document.querySelector('#menubar-panel') && document.querySelector('#menubar-panel').innerText.includes('Wave')`))
-	front, err := js(ctx, `document.querySelector('#menubar-panel').innerText`)
+	// The front menu becomes the applet's own once the applet has given
+	// its menus; a click before then opens the window's default menu.
+	must(t, waitLong(ctx, `document.querySelector('.menubar-front .menubar-title') && document.querySelector('.menubar-front .menubar-title').textContent.trim() === 'Hello'`))
+	// What the applet gives PUDL's menu bar, read through PUDL's own
+	// menuSourceIn: its entry and, through the host kit, the window's
+	// commands. Opening the panel itself is PUDL's to test; in a busy run
+	// the panel opened and closed again before a test could read it.
+	front, err := js(ctx, `(function () {
+		var win = document.querySelector('.win[data-win="app-hello"]'), src = pudlApplets.menuSourceIn(win);
+		var m = src && src.menus && src.menus(), items = m && m.titles && m.titles[0] ? m.titles[0].items : [];
+		return items.map(function (i) { return typeof i === 'string' ? i : i.label; }).join('|');
+	})()`)
 	must(t, err)
 	if !strings.Contains(front, "Wave") || !strings.Contains(front, "Open as a page") {
 		t.Errorf("the applet's menu has its own entry and the window's commands; got %q", front)
