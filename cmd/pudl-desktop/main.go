@@ -29,6 +29,7 @@ func main() {
 	runOrigin := flag.String("run-origin", "", "the run origin's address as a browser reaches it, such as https://pudl-run.example.com")
 	renderBase := flag.String("render-base", "", "the run origin's address as the service's own browser reaches it, such as http://127.0.0.1:8200; empty draws no pictures")
 	chrome := flag.String("chrome", "", "the Chromium browser that draws pictures; empty finds one")
+	applets := flag.String("applets", "applets", "the folder of installed applet packages, one folder each with an applet.json; missing for none")
 	flag.Parse()
 
 	st, err := store.Open(*data)
@@ -47,6 +48,9 @@ func main() {
 		}
 	}
 	srv.RunOrigin = strings.TrimRight(*runOrigin, "/")
+	if fi, err := os.Stat(*applets); err == nil && fi.IsDir() {
+		srv.Applets = *applets
+	}
 	if *renderBase != "" {
 		srv.RenderBase = strings.TrimRight(*renderBase, "/")
 		srv.Renderer = &render.Renderer{Path: *chrome}

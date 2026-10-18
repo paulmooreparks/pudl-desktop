@@ -29,6 +29,13 @@
     article.document :not(pre) > code { font-family: var(--mono); font-size: .9em; padding: .1em .3em; border-radius: var(--radius-sm); background: var(--surface-alt); }
     /* In a window the body is the window's, padded as a page is. */
     .win-body > .win-content { padding: var(--space-4); }
+    /* An applet that fills its window (data-applet-fit="fill", which PUDL's
+       applet runtime sets on a mount in a window) gets a definite box: the
+       body becomes a column and the content passes the height down, so an
+       installed package's own stylesheet need know nothing of the window. */
+    .win-body:has(> .win-content > [data-applet-fit="fill"]) { display: flex; flex-direction: column; overflow: auto; }
+    .win-body:has(> .win-content > [data-applet-fit="fill"]) > .win-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; width: 100%; box-sizing: border-box; }
+    .win-body > .win-content > [data-applet-fit="fill"] { flex: 1 1 auto; min-height: 0; width: 100%; }
     .win-body > .win-content > h1 { display: none; }
     .win-body textarea.source { min-height: 16rem; }
     /* The canvas: the document as it runs, wide and at a phone's width. */
@@ -56,6 +63,7 @@
   <script src="/static/pudl/pudl-theme.js"></script>
   <link rel="stylesheet" href="/static/pudl/pudl.css">
   <script src="/static/pudl/pudl-menu.js" defer></script>
+  {{if .Applet}}{{template "appletscripts"}}{{end}}
   {{template "styles"}}
   {{if .Canonical}}<link rel="canonical" href="{{.Canonical}}">{{end}}
   {{if .Up}}<link rel="up" href="{{.Up}}">{{end}}
@@ -80,7 +88,16 @@
 </html>
 {{end}}
 
-{{define "window"}}<section class="win" data-win="{{.Key}}" aria-labelledby="win-{{.Key}}-title"{{if .Watch}} data-watch="{{.Watch}}" data-revision="{{.WatchRev}}"{{end}}>
+{{/* The applet runtime, the host kit, the desktop's host object and the
+     installed packages' registry, in that order, after PUDL's own scripts. */}}
+{{define "appletscripts"}}
+  <script src="/static/pudl/pudl-applets.js" defer></script>
+  <script src="/static/pudl-host-kit.js" defer></script>
+  <script src="/static/host.js" defer></script>
+  <script src="/applets/registry.js" defer></script>
+{{end}}
+
+{{define "window"}}<section class="win" data-win="{{.Key}}" aria-labelledby="win-{{.Key}}-title"{{if .Watch}} data-watch="{{.Watch}}" data-revision="{{.WatchRev}}"{{end}}{{if .WinMin}} data-win-min="{{.WinMin}}"{{end}}{{if .WinMax}} data-win-max="{{.WinMax}}"{{end}}>
   <header class="win-head">
     <h2 class="win-title" id="win-{{.Key}}-title">{{.Title}}</h2>
     <nav class="win-chrome" aria-label="Window">
@@ -111,6 +128,7 @@
   <script src="/static/pudl/pudl-toast.js" defer></script>
   <script src="/static/pudl/pudl-menubar.js" defer></script>
   <script src="/static/desktop.js" defer></script>
+  {{template "appletscripts"}}
   {{template "styles"}}
   <style>
     html, body { height: 100%; margin: 0; }
@@ -140,6 +158,9 @@
           <ul>
             <li><a href="{{.RootPage}}" data-win-open="{{.RootKey}}">Files</a></li>
             <li><a href="{{.RootURL}}palette" data-win-open="palette">Palette</a></li>
+            {{if .Applets}}<li>-</li>{{end}}
+            {{range .Applets}}<li><a href="/app/{{.Name}}" data-win-open="app-{{.Name}}" title="{{.Description}}">{{if .Icon}}<img src="{{.Icon}}" alt=""> {{end}}{{.Title}}</a></li>
+            {{end}}
           </ul></li>
         <li data-menubar-id="view">View
           <ul>
@@ -166,6 +187,10 @@
 </body>
 </html>
 {{end}}
+
+{{/* An installed applet package's page and window: the mount the package
+     gives, which the applet runtime fills (internal/web/applets.go). */}}
+{{define "body-applet"}}{{.Mount}}{{end}}
 
 {{define "body-welcome"}}
   <h1>PUDL Desktop</h1>

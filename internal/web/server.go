@@ -56,7 +56,7 @@ var relations = map[string]string{
 	"move":             "A form that moves the element at path before or after the element at target, or first or last inside it. Its fields are path, target, position and base.",
 	"remove":           "A form that removes the element at path. Its fields are path and base.",
 	"properties":       "A form that sets the variants and states of one PUDL component an element is. A variant on its own is a checkbox named variant:<class>; a choice among alternatives is a field named group:<name> whose value is the chosen class, empty for none; a state is a checkbox named state:<n>. A checkbox left out, or sent empty, is off. Its other fields are component, path and base.",
-	"canvas":         "An HTML document as it runs, at its latest revision, in frames from the run origin, wide and at a phone's width.",
+	"canvas":           "An HTML document as it runs, at its latest revision, in frames from the run origin, wide and at a phone's width.",
 	"picture":          "A picture of an HTML document as it runs, drawn by the desktop's own browser, at the width and theme its address gives, so that an agent can see what a person sees.",
 }
 
@@ -77,6 +77,10 @@ type Server struct {
 	RenderBase string
 	// Renderer draws pictures of the canvas; nil draws none.
 	Renderer *render.Renderer
+	// Applets is the folder of installed applet packages, one folder each
+	// with an applet.json (internal/web/applets.go); empty for none.
+	Applets string
+	catalog appletCatalog
 
 	previewKey []byte
 	runMux     *http.ServeMux
@@ -115,6 +119,11 @@ func New(st *store.Store) (*Server, error) {
 	static, _ := fs.Sub(staticFS, "static")
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	s.mux.HandleFunc("GET /{$}", s.welcome)
+	// The installed applet packages: their registry, their pages and
+	// their files, which belong to no workspace.
+	s.mux.HandleFunc("GET /applets/registry.js", s.registryScript)
+	s.mux.Handle("GET /applets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { s.appletFiles().ServeHTTP(w, r) }))
+	s.mux.HandleFunc("GET /app/{name}", s.appletPage)
 	s.mux.HandleFunc("POST /workspaces", s.startWorkspace)
 	s.mux.HandleFunc("GET /rel/{name}", s.relation)
 	s.mux.Handle("/mcp", mcp.New(s))
@@ -296,6 +305,7 @@ func (s *Server) workspaceRoot(w http.ResponseWriter, r *http.Request, ws *store
 	s.render(w, r, http.StatusOK, "desktop", map[string]any{
 		"Title": "PUDL Desktop", "Desktop": true, "RootKey": "r-" + ws.Root,
 		"RootURL": base, "RootPage": base + "files/", "Windows": template.HTML(wins.String()),
+		"Applets": s.appletEntries(),
 	})
 }
 
@@ -307,6 +317,11 @@ func (s *Server) workspaceRoot(w http.ResponseWriter, r *http.Request, ws *store
 func parseKey(key string) (kind, id, n string) {
 	if key == "agent" || key == "palette" {
 		return key, "", ""
+	}
+	// An installed applet package's window, app-<name>, whose name may
+	// itself hold hyphens.
+	if strings.HasPrefix(key, "app-") && appletName.MatchString(key[4:]) {
+		return "app", key[4:], ""
 	}
 	parts := strings.Split(key, "-")
 	switch {
@@ -346,6 +361,8 @@ func keyURL(ws, key string) string {
 		return base + "/canvas"
 	case "node":
 		return base + "/design/" + n
+	case "app":
+		return "/app/" + id
 	}
 	return ""
 }
@@ -383,6 +400,8 @@ func (s *Server) window(w http.ResponseWriter, r *http.Request, ws *store.Worksp
 	case "node":
 		r2.SetPathValue("path", n)
 		s.nodeView(w, r2, ws)
+	case "app":
+		s.appletWindow(w, r2, id)
 	default:
 		s.notFound(w, r)
 	}

@@ -7,6 +7,10 @@ Nothing is built yet. The project is in design.
 - [The proposal](docs/proposal.md) sets out what the desktop is for, its architecture, the applications it starts with, and the decisions Paul Parks made on 4 October 2026, which come first in it.
 - [The walk-through](docs/walkthrough.md) takes one Markdown file through creation, editing, a conflict, export and deletion, in the browser and in the terminal, before any code is written. It is the first design task the proposal calls for.
 
+## Applet packages
+
+The desktop installs [PUDL applet packages](https://github.com/paulmooreparks/pudl-applet-packages): copy a package's folder, or a collection's `dist/`, into the folder `-applets` names (`applets` beside the binary by default). Each package's `applet.json` gives the desktop its script, its page at `/app/<name>`, its window `app-<name>` with the least size it asks for, and its place in the Applets menu with its icon. The desktop gives packages the host kit's menu helpers through `window.pudlHost`; it has no file service, settings files or snapshots for them yet, so a package that wants those does without. [PUDLSplash](https://github.com/paulmooreparks/PUDLSplash), the arcade games, is the first collection.
+
 ## Licence
 
 PUDL Desktop is released under the Apache License 2.0. See `LICENSE`.
