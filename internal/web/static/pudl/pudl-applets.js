@@ -51,7 +51,9 @@
 
    The instance may also have state(), returning a string, and
    setState(s), taking one, and commands(), which the section on commands
-   below sets out. PUDL keeps no applet state, with one opt-in: a
+   below sets out, and ready, a promise that settles when it can be used,
+   such as once it has loaded what it shows; its window stays busy until
+   then. The section on when an applet starts sets out start. PUDL keeps no applet state, with one opt-in: a
    mount outside a window with data-applet-param="name" has its state kept
    in the page's query under that name, replaced rather than pushed, so an
    applet embedded in an article can be shared by the article's address.
@@ -160,6 +162,7 @@
   function fail(root, err) {
     root.setAttribute('data-applet-state', 'error');
     if (window.console) console.warn('pudl-applets:', err.message);
+    settle(root);
   }
 
   /* The script's promise, checked for having registered the name. */
@@ -184,6 +187,8 @@
 
   function define(name, cfg) {
     defs[name] = cfg || {};
+    /* For pudl-actions.js, which reads the manifests define() names. */
+    document.dispatchEvent(new CustomEvent('pudl:applet-define', { detail: { name: name } }));
     var roots = unresolved[name] || [];
     delete unresolved[name];
     roots.forEach(function (root) {
@@ -226,9 +231,9 @@
 
   /* === Starting and stopping ============================================== */
 
-  function launch(root, def, c) {
+  function launch(root, def, c, reason) {
     /* The window or region may have gone while the script was on its way. */
-    if (!root.isConnected) return;
+    if (!root.isConnected) { settle(root); return; }
     var inWindow = !!root.closest('.win');
     var fit = root.getAttribute('data-applet-fit');
     var fitSet = false;
@@ -269,28 +274,246 @@
       changed: function (s) {
         if (s === undefined && entry.instance && entry.instance.state) s = entry.instance.state();
         root.dispatchEvent(new CustomEvent('pudl:applet-change', { bubbles: true, detail: { state: s == null ? null : String(s) } }));
-      }
+      },
+      /* Says the instance's commands have changed state (preview,
+         docs/proposals/toolbar-commands.md). */
+      commandsChanged: function () { if (window.pudlCommands) window.pudlCommands.changed(); }
     });
     entry.instance = instance || null;
+    commandsFor(entry);
     running.push(entry);
     root.setAttribute('data-applet-state', 'running');
     if (!inWindow && entry.instance && typeof entry.instance.commands === 'function') addCommandRow(entry);
     if (entry.instance && entry.instance.setState) {
       queued.slice(1).forEach(function (s) { entry.instance.setState(s); });
     }
+    root.dispatchEvent(new CustomEvent('pudl:applet-start', { bubbles: true,
+      detail: { name: c.name, instance: inst, reason: reason || 'open' } }));
+    /* The applet is ready when init returns, or when the promise its
+       instance offers as ready settles, whichever way it settles. */
+    var ready = entry.instance && entry.instance.ready;
+    if (ready && typeof ready.then === 'function') ready.then(function () { settle(root); }, function () { settle(root); });
+    else settle(root);
+  }
+
+  /* === Commands and toolbars (preview) =====================================
+     An instance's commandTable() is its commands, which pudl-commands.js
+     registers with the mount as their scope, so its menus, toolbars, keys
+     and agents all reach them by id. Its toolbars() describe toolbars of
+     those ids:
+       [{ label, groups: [{ label, glyph, priority, end, items: ['bold',
+          { choice: 'view' }, …] }] }]
+     drawn into the mount's [data-toolbar-slot] if it has one, or else
+     before the mount, folding as room runs out. */
+  function commandsFor(entry) {
+    var inst = entry.instance;
+    if (!inst || !window.pudlCommands) return;
+    if (typeof inst.commandTable === 'function') {
+      /* One table, shared with the toolbars drawn beside the mount, so
+         pudl-commands.js knows them for one scope. */
+      entry.commandTable = function () { return inst.commandTable(); };
+      entry.unregister = window.pudlCommands.register(entry.root, entry.commandTable);
+    }
+    if (typeof inst.toolbars !== 'function') return;
+    var bars;
+    try { bars = inst.toolbars(); } catch (err) { if (window.console) console.warn('pudl-applets:', err); return; }
+    if (!Array.isArray(bars) || !bars.length) return;
+    var holder = document.createElement('div');
+    holder.className = 'applet-toolbars';
+    bars.forEach(function (t) {
+      var bar = document.createElement('div');
+      bar.className = 'toolbar';
+      bar.setAttribute('role', 'toolbar');
+      bar.setAttribute('aria-label', t.label || '');
+      bar.setAttribute('data-toolbar-fold', '');
+      (t.groups || []).forEach(function (g) {
+        var group = document.createElement('div');
+        group.className = 'toolbar-group';
+        if (g.label) group.setAttribute('data-toolbar-group', g.label);
+        if (g.glyph) group.setAttribute('data-toolbar-glyph', g.glyph);
+        if (g.priority != null) group.setAttribute('data-toolbar-priority', String(g.priority));
+        if (g.end) group.setAttribute('data-toolbar-end', '');
+        (g.items || []).forEach(function (item) {
+          var c;
+          if (item && typeof item === 'object' && item.choice) {
+            c = document.createElement('div');
+            c.setAttribute('data-command-choice', item.choice);
+          } else {
+            c = document.createElement('button');
+            c.type = 'button';
+            c.setAttribute('data-command', String(item));
+          }
+          group.appendChild(c);
+        });
+        bar.appendChild(group);
+      });
+      holder.appendChild(bar);
+    });
+    var slot = entry.root.querySelector('[data-toolbar-slot]');
+    if (slot) slot.appendChild(holder);
+    else entry.root.parentNode.insertBefore(holder, entry.root);
+    entry.toolbars = holder;
+    /* Toolbars drawn before the mount are outside it, so they are a scope
+       of the same commands. */
+    if (!slot && typeof inst.commandTable === 'function') {
+      var off = window.pudlCommands.register(holder, entry.commandTable);
+      var first = entry.unregister;
+      entry.unregister = function () { if (first) first(); off(); };
+    }
+  }
+
+  /* === When an applet starts ===============================================
+     An applet in a window may ask to start later than the window's opening
+     (0.66.0), with start in define() or register(), or data-applet-start on
+     its mount, which wins:
+
+       "open"  as the window opens, the default;
+       "seen"  the first time the window is seen, which pudl-windows.js says
+               with pudl:window-seen: in front, shown in a dock, or filling a
+               zone nothing covers;
+       "idle"  as "seen", and also, while not yet seen, once every applet
+               started before it is ready, one at a time.
+
+     Outside a window the applet starts at once. Until it starts, its mount
+     is hidden, a loading line stands in its place, and the window is marked
+     aria-busy, which stays until the applet is ready. A window closed before
+     it was seen never starts its applet. pudl:applet-start fires on the
+     mount as it starts, with detail.reason "open", "seen", "idle" or
+     "host", and started(key) and start(key) let a host ask whether a
+     window's applets have started and start them now. */
+
+  var IDLE_DELAY = 120;    // ms between one idle applet being ready and the next starting
+  var parked = [];         // mounts waiting for their window to be seen, in the order they arrived
+  var starting = new Set();// mounts started and not yet ready
+  var readiness = new WeakMap(); // mount -> { promise, resolve } for its being ready
+  var idleTimer = 0;
+
+  function policyOf(root) {
+    var name = root.getAttribute('data-applet');
+    var p = root.getAttribute('data-applet-start') || (defs[name] && defs[name].start) || (registry[name] && registry[name].start);
+    return p === 'seen' || p === 'idle' ? p : 'open';
+  }
+
+  function windowOf(root) { return root.closest('.win[data-win]'); }
+
+  function unseen(root) {
+    var win = windowOf(root);
+    return !!(win && window.pudlWindows && window.pudlWindows.seen && !window.pudlWindows.seen(win.getAttribute('data-win')));
+  }
+
+  /* A window is busy while any applet in it is waiting, loading or not yet
+     ready. */
+  function markBusy(root, on) {
+    root.toggleAttribute('data-applet-busy', on);
+    var win = windowOf(root);
+    if (!win) return;
+    if (win.querySelector('[data-applet][data-applet-busy]')) win.setAttribute('aria-busy', 'true');
+    else win.removeAttribute('aria-busy');
+  }
+
+  function readinessOf(root) {
+    var r = readiness.get(root);
+    if (!r) {
+      r = {};
+      r.promise = new Promise(function (resolve) { r.resolve = resolve; });
+      readiness.set(root, r);
+    }
+    return r;
+  }
+
+  function settle(root) {
+    starting.delete(root);
+    markBusy(root, false);
+    readinessOf(root).resolve();
+    readiness.delete(root);
+    scheduleIdle();
+  }
+
+  function park(root) {
+    starting.delete(root);
+    root.setAttribute('data-applet-state', 'waiting');
+    var line = document.createElement('div');
+    line.className = 'loading applet-waiting';
+    line.setAttribute('role', 'status');
+    var spin = document.createElement('span');
+    spin.className = 'spinner';
+    spin.setAttribute('aria-hidden', 'true');
+    line.appendChild(spin);
+    line.appendChild(document.createTextNode(' ' + (root.getAttribute('data-applet-text-loading') || 'Loading…')));
+    root.parentNode.insertBefore(line, root);
+    parked.push(root);
+    scheduleIdle();
+  }
+
+  function unpark(root, reason) {
+    var i = parked.indexOf(root);
+    if (i < 0) return;
+    parked.splice(i, 1);
+    var line = root.previousElementSibling;
+    if (line && line.classList.contains('applet-waiting')) line.remove();
+    root.setAttribute('data-applet-state', 'loading');
+    starting.add(root);
+    var name = root.getAttribute('data-applet');
+    try { launch(root, registry[name], config(root), reason); }
+    catch (err) { fail(root, err); }
+  }
+
+  /* The next idle applet starts once nothing else is starting, after a
+     moment, so the window in front is drawn first. */
+  function scheduleIdle() {
+    if (idleTimer || starting.size) return;
+    idleTimer = setTimeout(function () {
+      idleTimer = 0;
+      if (starting.size) return;
+      parked = parked.filter(function (r) { return r.isConnected; });
+      var next = parked.find(function (r) { return policyOf(r) === 'idle'; });
+      if (next) unpark(next, 'idle');
+    }, IDLE_DELAY);
   }
 
   function start(root) {
     root.setAttribute('data-applet-state', 'loading');
+    starting.add(root);
+    readinessOf(root);
+    markBusy(root, true);
     var c = config(root);
     warnRetired(root);
     ensureCss(c.css);
     if (!c.src && !registry[c.name]) (unresolved[c.name] = unresolved[c.name] || []).push(root);
     definition(c.name, c.src).then(function (def) {
       if (root.getAttribute('data-applet-state') !== 'loading') return;
-      launch(root, def, config(root));
+      var policy = policyOf(root);
+      if (policy !== 'open' && unseen(root)) park(root);
+      else launch(root, def, config(root), policy === 'open' || !windowOf(root) ? 'open' : 'seen');
     }).catch(function (err) { fail(root, err); });
   }
+
+  /* Whether every applet in a window has started, and starting them now,
+     for a host command that needs every instance, such as saving every
+     open document. start(key) answers a promise that settles when they are
+     all ready. */
+  function windowEl(key) {
+    return document.querySelector('.win[data-win="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]');
+  }
+
+  function started(key) {
+    var win = windowEl(key);
+    return !!win && !win.querySelector('[data-applet]:not([data-applet-state="running"]):not([data-applet-state="error"])');
+  }
+
+  function startWindow(key) {
+    var win = windowEl(key);
+    if (!win) return Promise.resolve();
+    parked.slice().forEach(function (r) { if (win.contains(r)) unpark(r, 'host'); });
+    return Promise.all(Array.prototype.map.call(win.querySelectorAll('[data-applet]'), function (r) {
+      var w = readiness.get(r);
+      return w ? w.promise : null;
+    })).then(function () {});
+  }
+
+  document.addEventListener('pudl:window-seen', function (e) {
+    parked.slice().forEach(function (r) { if (e.target.contains(r)) unpark(r, 'seen'); });
+  });
 
   function boot(scope) {
     (scope || document).querySelectorAll('[data-applet]:not([data-applet-state])').forEach(start);
@@ -300,6 +523,15 @@
   /* Destroys the applets inside scope, or with no scope, those whose mount
      has left the document. */
   function destroy(scope) {
+    /* An applet that never started, or is not yet ready, is let go too, so
+       it does not hold up the idle ones. */
+    function gone(root) { return scope ? (scope === root || scope.contains(root)) : !root.isConnected; }
+    parked = parked.filter(function (root) {
+      if (!gone(root)) return true;
+      root.removeAttribute('data-applet-state');
+      return false;
+    });
+    starting.forEach(function (root) { if (gone(root)) settle(root); });
     running = running.filter(function (entry) {
       var inside = scope ? (scope === entry.root || scope.contains(entry.root)) : !entry.root.isConnected;
       if (!inside) return true;
@@ -308,6 +540,8 @@
       entry.root.removeAttribute('data-applet-state');
       if (entry.fitSet) entry.root.removeAttribute('data-applet-fit');
       if (entry.row) entry.row.remove();
+      if (entry.unregister) entry.unregister();
+      if (entry.toolbars) entry.toolbars.remove();
       return false;
     });
   }
@@ -320,9 +554,25 @@
      join the window menu, which asks for them with commandsIn(); on a page
      they get a menu of their own, in a row above the applet. */
 
+  /* A row may be the id of a command in the applet's command table, which
+     pudl-commands.js turns into the row (0.68.1). */
+  function resolveRows(list, root) {
+    return window.pudlCommands && window.pudlCommands.menuRows ? window.pudlCommands.menuRows(list, root) : list;
+  }
+  function resolveMenus(m, root) {
+    if (!m || typeof m !== 'object') return m;
+    var out = Object.assign({}, m);
+    if (Array.isArray(m.titles)) out.titles = m.titles.map(function (t) { return t && Array.isArray(t.items) ? Object.assign({}, t, { items: resolveRows(t.items, root) }) : t; });
+    if (m.into && typeof m.into === 'object') {
+      out.into = {};
+      Object.keys(m.into).forEach(function (k) { out.into[k] = resolveRows(m.into[k], root); });
+    }
+    return out;
+  }
+
   function commandsOf(entry) {
     var list;
-    try { list = entry.instance.commands(); }
+    try { list = resolveRows(entry.instance.commands(), entry.root); }
     catch (err) { if (window.console) console.warn('pudl-applets:', err); return []; }
     return (Array.isArray(list) ? list : []).filter(function (c) {
       return c && typeof c.label === 'string' && typeof c.run === 'function';
@@ -354,11 +604,11 @@
       if (!hasMenus && !hasCommands) continue;
       return {
         name: entry.name, root: entry.root, _instance: inst,
-        menus: hasMenus ? function (inst, name) {
+        menus: hasMenus ? function (inst, name, root) {
           return function () {
-            try { return inst.menus(); } catch (err) { if (window.console) console.warn('pudl-applets: ' + name + '.menus():', err); return null; }
+            try { return resolveMenus(inst.menus(), root); } catch (err) { if (window.console) console.warn('pudl-applets: ' + name + '.menus():', err); return null; }
           };
-        }(inst, entry.name) : null,
+        }(inst, entry.name, entry.root) : null,
         commands: hasCommands ? function (e) { return function () { return commandsOf(e); }; }(entry) : null
       };
     }
@@ -553,8 +803,18 @@
     delete handed[e.detail && e.detail.key];
   });
 
-  window.pudlApplets = { define: define, register: register, boot: boot, destroy: destroy, request: request, can: can,
-                         commandsIn: commandsIn, menuSourceIn: menuSourceIn };
+  /* Merged into what is there, so pudl-actions.js may load either side. */
+  window.pudlApplets = Object.assign(window.pudlApplets || {}, { define: define, register: register, boot: boot, destroy: destroy, request: request, can: can,
+                         commandsIn: commandsIn, menuSourceIn: menuSourceIn, started: started, start: startWindow,
+                         /* What each define() said, for pudl-actions.js: { name: { actions, handles, page, ver } }. */
+                         definitions: function () {
+                           var out = {};
+                           Object.keys(defs).forEach(function (n) {
+                             var d = defs[n];
+                             out[n] = { actions: d.actions || null, handles: d.handles || null, page: d.page || null, ver: d.ver || null, title: d.title || null };
+                           });
+                           return out;
+                         } });
 
   /* A mount with data-applet-param keeps its state in the page's query. */
   document.addEventListener('pudl:applet-change', function (e) {

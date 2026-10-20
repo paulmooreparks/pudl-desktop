@@ -293,7 +293,8 @@
     if (changed) apply(state);
   }
 
-  function windowMark(node, key) {
+  /* title, when given, is the tooltip in place of the spoken name. */
+  function windowMark(node, key, title) {
     var win = wins[key];
     if (!win) return;
     var glyph = win.getAttribute('data-win-glyph') || 'app';
@@ -309,21 +310,35 @@
       node.innerHTML = '<span class="glyph win-item-glyph" aria-hidden="true"></span><span class="win-item-title"></span><span class="win-item-detail" hidden></span><span class="badge warn win-item-attention" aria-hidden="true"></span><span class="win-item-running" aria-hidden="true"></span><span class="win-item-progress" aria-hidden="true"></span>';
       icon = node.firstChild;
     }
-    icon.style.setProperty('--glyph', 'var(--glyph-' + glyph + ')');
-    icon.hidden = !win.hasAttribute('data-win-glyph') && !node.hasAttribute('data-dock-key');
-    node.querySelector('.win-item-title').textContent = titleOf(key);
+    styleProp(icon, '--glyph', 'var(--glyph-' + glyph + ')');
+    setHidden(icon, !win.hasAttribute('data-win-glyph') && !node.hasAttribute('data-dock-key'));
+    setText(node.querySelector('.win-item-title'), titleOf(key));
     var detail = node.querySelector('.win-item-detail');
-    if (detail) { detail.textContent = detailOf(key); detail.hidden = !detailOf(key); }
+    if (detail) { setText(detail, detailOf(key)); setHidden(detail, !detailOf(key)); }
     var badge = node.querySelector('.win-item-attention');
-    badge.hidden = !count;
-    badge.textContent = count ? String(count) : '';
-    node.querySelector('.win-item-running').hidden = !running;
+    setHidden(badge, !count);
+    setText(badge, count ? String(count) : '');
+    setHidden(node.querySelector('.win-item-running'), !running);
     var meter = node.querySelector('.win-item-progress');
-    meter.hidden = progress === null;
-    meter.textContent = progress === null ? '' : progress + '%';
+    setHidden(meter, progress === null);
+    setText(meter, progress === null ? '' : progress + '%');
     var label = fullTitle(key) + (count ? ', ' + count + ' ' + text('attention', 'needing attention') : '') + (running ? ', ' + text('running', 'running') : '') + (progress === null ? '' : ', ' + progress + '%');
-    node.setAttribute('aria-label', label);
-    node.title = label;
+    setAttr(node, 'aria-label', label);
+    setAttr(node, 'title', title || label);
+  }
+
+  /* Text and hidden set only when they differ (0.69.3); setting text to
+     the text a node has still replaces it, which every observer of the
+     page then hears about. */
+  function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
+  function setHidden(el, h) { if (el.hidden !== h) el.hidden = h; }
+
+  function soonPositionDockMenus(group) {
+    if (group.__placeSoon) return;
+    group.__placeSoon = true;
+    var go = function () { if (!group.__placeSoon) return; group.__placeSoon = false; if (group.isConnected) positionDockMenus(group); };
+    requestAnimationFrame(go);
+    setTimeout(go, 100);
   }
 
   function positionDockMenus(group) {
@@ -553,7 +568,7 @@
       } else if (list.nextElementSibling !== dockToggle) group.insertBefore(dockToggle, list.nextElementSibling);
       group.toggleAttribute('data-dock-rail', rail);
       group.toggleAttribute('data-dock-collapsed', collapsed);
-      group.style.zIndex = String(2 * state.open.length + 2);
+      group.style.zIndex = String(4 * state.open.length + 2);
       list.setAttribute('aria-orientation', rail ? 'vertical' : 'horizontal');
       Array.from(list.children).forEach(function (tab) {
         if (members.indexOf(tab.getAttribute('data-dock-entry')) < 0) tab.remove();
@@ -571,13 +586,13 @@
           tab.setAttribute('data-dock-key', key);
           entry.appendChild(tab);
         }
-        tab.id = 'pudl-dock-tab-' + key;
+        if (tab.id !== 'pudl-dock-tab-' + key) tab.id = 'pudl-dock-tab-' + key;
         if (tab.tagName === 'A') {
           /* A link's native drag would take the pointer from a tab drag. */
           tab.draggable = false;
           var selecting = raised(state, key);
           dockRecord(selecting, edge).selected = key;
-          tab.setAttribute('href', urlFor(selecting));
+          setAttr(tab, 'href', urlFor(selecting));
         }
         if (!group.querySelector('[data-dock-menu="' + CSS.escape(key) + '"]')) {
           var menuButton = document.createElement('button');
@@ -597,19 +612,21 @@
         wrapper.toggleAttribute('data-dock-only', dockOnly(key));
         var menuControl = group.querySelector('[data-dock-menu="' + CSS.escape(key) + '"]');
         menuControl.toggleAttribute('data-dock-only', dockOnly(key));
-        menuControl.tabIndex = key === selected ? 0 : -1;
-        menuControl.setAttribute('aria-label', titleOf(key) + ': ' + text('menu', 'Window menu'));
-        menuControl.title = menuControl.getAttribute('aria-label');
+        var mt = key === selected ? 0 : -1;
+        if (menuControl.tabIndex !== mt) menuControl.tabIndex = mt;
+        setAttr(menuControl, 'aria-label', titleOf(key) + ': ' + text('menu', 'Window menu'));
+        setAttr(menuControl, 'title', menuControl.getAttribute('aria-label'));
         windowMark(tab, key);
         var win = wins[key];
         if (!win.id) win.id = 'pudl-dock-panel-' + key;
-        tab.setAttribute('aria-controls', win.id);
-        tab.setAttribute('aria-selected', String(key === selected));
+        setAttr(tab, 'aria-controls', win.id);
+        setAttr(tab, 'aria-selected', String(key === selected));
         var focused = list.contains(document.activeElement) ? document.activeElement.closest('[role="tab"]') : null;
-        tab.tabIndex = (focused ? tab === focused : key === selected) ? 0 : -1;
+        var tt = (focused ? tab === focused : key === selected) ? 0 : -1;
+        if (tab.tabIndex !== tt) tab.tabIndex = tt;
         if (!dockRoles.has(win)) dockRoles.set(win, { role: win.getAttribute('role'), label: win.getAttribute('aria-labelledby') });
-        win.setAttribute('role', 'tabpanel');
-        win.setAttribute('aria-labelledby', tab.id);
+        setAttr(win, 'role', 'tabpanel');
+        setAttr(win, 'aria-labelledby', tab.id);
       });
       if (group.getAttribute('data-dock-selected') !== selected) {
         group.setAttribute('data-dock-selected', selected);
@@ -617,10 +634,13 @@
         if (selectedTab) selectedTab.parentElement.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       }
       var toggle = group.querySelector('.win-dock-toggle'), label = collapsed ? text('dock-pin', 'Pin dock open') : text('dock-collapse', 'Collapse dock');
-      toggle.title = label;
-      toggle.setAttribute('aria-label', label);
-      toggle.firstChild.style.setProperty('--glyph', 'var(--glyph-' + (collapsed ? 'pin' : 'minimize') + ')');
-      positionDockMenus(group);
+      setAttr(toggle, 'title', label);
+      setAttr(toggle, 'aria-label', label);
+      styleProp(toggle.firstChild, '--glyph', 'var(--glyph-' + (collapsed ? 'pin' : 'minimize') + ')');
+      /* Placing the tabs' menu buttons measures each tab, so it waits for
+         the next frame, when the page is laid out anyway, once however
+         many times the windows are laid out before it (0.69.3). */
+      soonPositionDockMenus(group);
     });
     state.open.forEach(function (key) {
       var win = wins[key], saved = dockRoles.get(win);
@@ -665,6 +685,7 @@
       if (place[k].zone) place[k].zone = Object.assign({}, place[k].zone);
     });
     var out = { open: st.open.slice(), top: st.top, min: Object.assign({}, st.min), place: place, recent: recentOf(st) };
+    if (!gridEmpty(st.grid)) out.grid = copyGrid(st.grid);
     if (st.docks) {
       out.docks = {};
       Object.keys(st.docks).forEach(function (edge) {
@@ -792,6 +813,214 @@
     return p.mode + ':' + nums.map(fmt).join(',');
   }
 
+  /* === The grid's lines (0.67.0) ==========================================
+     The sixths grid has lines 0 to 6 across (x) and down (y), and a reader
+     may move lines 1 to 5 with the splitters drawn where two snapped
+     windows meet (docs/proposals/zone-splitters.md). A placement still
+     holds its cells of the grid; only where the lines are drawn changes,
+     so every snapped window with an edge on a moved line follows it. A
+     state keeps the moved lines as grid: { x: { 3: 0.42 }, y: {} }, shares
+     of the inner area, and a line nobody moved sits evenly between the
+     nearest moved lines on either side, or the edges. A moved line is
+     forgotten once no snapped window has an edge on it. In the address the
+     moved lines are grid=x3:0.42,y3:0.6. */
+
+  var drawGrid = null;     // the moved lines of the state being applied
+  var LINE_GAP = 0.02;     // the least share of the inner area between two moved lines
+  var LINE_STEP = 0.01;    // the share an arrow key moves a line, and a sixth with Shift
+
+  function cells(z) { return sixths(z).split(',').map(Number); }
+
+  function moved(grid, axis) { return (grid && grid[axis]) || {}; }
+
+  /* Where line i of an axis is drawn, as a share of the inner area. */
+  function linePos(grid, axis, i) {
+    if (i <= 0) return 0;
+    if (i >= 6) return 1;
+    var m = moved(grid, axis);
+    if (m[i] != null) return m[i];
+    var lo = 0, loPos = 0, hi = 6, hiPos = 1, j;
+    for (j = i - 1; j > 0; j--) if (m[j] != null) { lo = j; loPos = m[j]; break; }
+    for (j = i + 1; j < 6; j++) if (m[j] != null) { hi = j; hiPos = m[j]; break; }
+    return loPos + (hiPos - loPos) * (i - lo) / (hi - lo);
+  }
+
+  /* A zone's rectangle as the grid draws it now. */
+  function warped(grid, z) {
+    var c = cells(z);
+    var x = linePos(grid, 'x', c[0]), y = linePos(grid, 'y', c[1]);
+    return { x: x, y: y, w: linePos(grid, 'x', c[2]) - x, h: linePos(grid, 'y', c[3]) - y };
+  }
+
+  function copyGrid(grid) {
+    return { x: Object.assign({}, moved(grid, 'x')), y: Object.assign({}, moved(grid, 'y')) };
+  }
+
+  function gridEmpty(grid) {
+    return !Object.keys(moved(grid, 'x')).length && !Object.keys(moved(grid, 'y')).length;
+  }
+
+  /* grid=x3:0.42,y3:0.6, read leniently: a line out of range, a share out
+     of range or out of order with the lines before it is left out. */
+  function parseGrid(value) {
+    var grid = { x: {}, y: {} };
+    (value || '').split(',').forEach(function (part) {
+      var m = /^([xy])([1-5]):([0-9.]+)$/.exec(part);
+      if (!m) return;
+      var axis = m[1], i = Number(m[2]), p = Number(m[3]);
+      if (!(p > 0 && p < 1)) return;
+      var lower = 0, upper = 1;
+      Object.keys(grid[axis]).forEach(function (k) {
+        if (+k < i) lower = Math.max(lower, grid[axis][k]);
+        if (+k > i) upper = Math.min(upper, grid[axis][k]);
+      });
+      if (p - lower >= LINE_GAP && upper - p >= LINE_GAP) grid[axis][i] = p;
+    });
+    return grid;
+  }
+
+  function formatGrid(grid) {
+    var parts = [];
+    ['x', 'y'].forEach(function (axis) {
+      Object.keys(moved(grid, axis)).sort().forEach(function (i) { parts.push(axis + i + ':' + fmt(grid[axis][i])); });
+    });
+    return parts.join(',');
+  }
+
+  /* The snapped windows a line move can change: each open window snapped
+     to a zone, a half or a quarter, with its cells. A window the layer
+     shows maximised for want of room is left out, since its zone is not
+     drawn. */
+  function snappedCells(st) {
+    var out = [];
+    st.open.forEach(function (k) {
+      var p = st.place[k];
+      if (!p || p.mode === 'maximized' || !zoneFilled(p)) return;
+      out.push({ key: k, c: cells(zoneFilled(p)) });
+    });
+    return out;
+  }
+
+  /* The lines two open snapped windows meet across, minimised or covered
+     or not, as { x3: true }: the lines a splitter divides, now or once the
+     windows are shown again. */
+  function dividingLines(st) {
+    var ws = snappedCells(st), out = {};
+    ['x', 'y'].forEach(function (axis) {
+      var lo = axis === 'x' ? 0 : 1, hi = lo + 2, a0 = axis === 'x' ? 1 : 0, a1 = a0 + 2;
+      ws.forEach(function (a) {
+        ws.forEach(function (b) {
+          if (a !== b && a.c[hi] === b.c[lo] && Math.max(a.c[a0], b.c[a0]) < Math.min(a.c[a1], b.c[a1])) out[axis + a.c[hi]] = true;
+        });
+      });
+    });
+    return out;
+  }
+
+  /* Forgets each moved line that no longer divides two snapped windows,
+     such as the middle once one of two halves is closed or floated, and
+     each that sits where the grid would put it anyway. */
+  function pruneGrid(st) {
+    if (gridEmpty(st.grid)) { delete st.grid; return; }
+    var used = dividingLines(st);
+    ['x', 'y'].forEach(function (axis) {
+      Object.keys(st.grid[axis]).forEach(function (i) {
+        if (!used[axis + i]) { delete st.grid[axis][i]; return; }
+        var keep = st.grid[axis][i];
+        delete st.grid[axis][i];
+        if (Math.abs(linePos(st.grid, axis, +i) - keep) >= 0.0005) st.grid[axis][i] = keep;
+      });
+    });
+    if (gridEmpty(st.grid)) delete st.grid;
+  }
+
+  /* Before line i moves, every other line two snapped windows meet across
+     on the same axis is held where it is drawn now, so moving the first
+     third's edge leaves the last third alone. */
+  function pinLines(grid, st, axis, i) {
+    var used = dividingLines(st);
+    for (var j = 1; j < 6; j++) {
+      if (j !== i && used[axis + j] && grid[axis][j] == null) grid[axis][j] = linePos(grid, axis, j);
+    }
+  }
+
+  /* The least share of the inner area each snapped window may take on each
+     axis: its least size, or the size its cells have on the plain grid if
+     that is smaller, so a move never forces a window below the size it
+     would have had anyway. */
+  /* The least sizes are worked out again only when what they depend on
+     has changed (0.69.3): the inner area's size, which windows are snapped
+     where, and their own limits. Working them out reads each window's
+     computed style, and the windows are laid out again on every frame of
+     a drag. */
+  var minsKey = '', minsCache = null;
+  function gridMins(st) {
+    var W = innerW(), H = innerH(), cellsList = snappedCells(st);
+    var key = W + 'x' + H + '|' + cellsList.map(function (w) {
+      var el = wins[w.key];
+      return w.key + ':' + w.c.join(',') + ':' + restricted(w.key) + ':' + (el ? (el.getAttribute('data-win-min') || '') : '');
+    }).join(';');
+    if (key === minsKey && minsCache) return minsCache;
+    var out = {};
+    cellsList.forEach(function (w) {
+      if (restricted(w.key)) return;
+      var min = minFractions(W, H, wins[w.key]);
+      out[w.key] = { c: w.c, w: Math.min(min.w, (w.c[2] - w.c[0]) / 6), h: Math.min(min.h, (w.c[3] - w.c[1]) / 6) };
+    });
+    minsKey = key;
+    minsCache = out;
+    return out;
+  }
+
+  function gridOk(grid, mins) {
+    return Object.keys(mins).every(function (k) {
+      var m = mins[k], c = m.c;
+      return linePos(grid, 'x', c[2]) - linePos(grid, 'x', c[0]) >= m.w - 1e-6 &&
+             linePos(grid, 'y', c[3]) - linePos(grid, 'y', c[1]) >= m.h - 1e-6;
+    });
+  }
+
+  /* The nearest share to want that line i may move to: between the moved
+     lines either side of it, and as far toward want as every snapped
+     window's least size allows, found by halving from where it is. */
+  function clampLine(grid, mins, axis, i, want) {
+    var m = moved(grid, axis), lower = 0, upper = 1;
+    Object.keys(m).forEach(function (k) {
+      if (+k < i) lower = Math.max(lower, m[k]);
+      if (+k > i) upper = Math.min(upper, m[k]);
+    });
+    want = Math.max(lower + LINE_GAP, Math.min(upper - LINE_GAP, want));
+    var at = function (p) { var g = copyGrid(grid); g[axis][i] = p; return g; };
+    if (gridOk(at(want), mins)) return want;
+    var a = linePos(grid, axis, i), b = want;
+    if (!gridOk(at(a), mins)) return a;
+    for (var n = 0; n < 24; n++) {
+      var mid = (a + b) / 2;
+      if (gridOk(at(mid), mins)) a = mid; else b = mid;
+    }
+    return a;
+  }
+
+  /* After the inner area changes size, a moved line that now squeezes a
+     window below its least size goes back toward where the grid puts it,
+     and is forgotten if even that will not do. */
+  function settleGrid(st) {
+    if (gridEmpty(st.grid)) return;
+    var mins = gridMins(st);
+    if (gridOk(st.grid, mins)) return;
+    ['x', 'y'].forEach(function (axis) {
+      Object.keys(st.grid[axis]).forEach(function (i) {
+        var keep = st.grid[axis][i];
+        delete st.grid[axis][i];
+        var plain = linePos(st.grid, axis, +i);
+        st.grid[axis][i] = plain;
+        if (!gridOk(st.grid, mins)) { delete st.grid[axis][i]; return; }
+        st.grid[axis][i] = clampLine(st.grid, mins, axis, +i, keep);
+      });
+    });
+    if (gridEmpty(st.grid)) delete st.grid;
+  }
+
   /* === Docked windows ======================================================
      A docked window holds an edge of the layer, and takes that strip from
      every other window, which lays itself out in what remains, the inner
@@ -879,6 +1108,8 @@
        is then the window that comes back in front on restoring them. */
     var top = q.get('top');
     st.top = (top && st.open.indexOf(top) >= 0) ? top : null;
+    var grid = parseGrid(q.get('grid'));
+    if (!gridEmpty(grid)) st.grid = grid;
     return st;
   }
 
@@ -894,6 +1125,7 @@
     st.open.forEach(function (k) {
       if (st.place[k]) parts.push('p.' + k + '=' + formatPlacement(st.place[k]));
     });
+    if (!gridEmpty(st.grid)) parts.push('grid=' + formatGrid(st.grid));
     if (st.docks) ['left', 'right', 'top', 'bottom'].forEach(function (edge) {
       var d = st.docks[edge];
       if (!d) return;
@@ -956,7 +1188,7 @@
       if (!seg) return;
       var raw = seg.split('=')[0], k = raw;
       try { k = decodeURIComponent(k.replace(/\+/g, ' ')); } catch (e) { /* leave as is */ }
-      if (k === 'open' || k === 'top' || k === 'min' || k.indexOf('p.') === 0 || (/^d\.(left|right|top|bottom)$/.test(k) && sharedEdge(k.slice(2)))) return;
+      if (k === 'open' || k === 'top' || k === 'min' || k === 'grid' || k.indexOf('p.') === 0 || (/^d\.(left|right|top|bottom)$/.test(k) && sharedEdge(k.slice(2)))) return;
       var owner = scopedOwner(k);
       if (owner) {
         if (rename && owner.key === rename.from) { parts.push(owner.prefix + '.' + rename.to + seg.slice(raw.length)); return; }
@@ -1001,6 +1233,251 @@
     if (edge) return edgeFront(st, edge) !== key;
     var p = parentOf(st, key);
     return !!(st.min[key] || (p && st.min[p]));
+  }
+
+  /* Whether a window can be seen (0.66.0): it is in front, or it is the
+     window its dock shows and is not collapsed to its title bar, or it
+     fills a zone that no window above it shares and no maximised window
+     above it covers. A window partly showing behind another is not
+     counted, and nothing is measured. On a narrow screen every window is
+     maximised, so only the one in front is seen. */
+  function shown(st, key) {
+    if (!st || st.open.indexOf(key) < 0 || !wins[key] || isHidden(st, key)) return false;
+    if (key === active(st)) return true;
+    if (shownEdge(st, key)) return !st.min[key];
+    var p = effectivePlacement(st, key);
+    if (!p || p.mode === 'maximized' || !zoneFilled(p)) return false;
+    var mine = sixths(zoneFilled(p));
+    for (var i = zOrder.indexOf(key) + 1; i < zOrder.length; i++) {
+      var k = zOrder[i];
+      if (st.open.indexOf(k) < 0 || isHidden(st, k) || shownEdge(st, k)) continue;
+      var q = effectivePlacement(st, k);
+      if (!q) continue;
+      if (q.mode === 'maximized') return false;
+      if (zoneFilled(q) && sixths(zoneFilled(q)) === mine) return false;
+    }
+    return true;
+  }
+
+  /* Each window says once, with pudl:window-seen, when it is first seen,
+     which pudl-applets.js waits for to start an applet that asks to start
+     then. The windows already seen are kept by element, so a window that
+     changes its key stays seen. */
+  var seenWins = new WeakSet();
+  function announceSeen(st) {
+    st.open.forEach(function (k) {
+      var el = wins[k];
+      if (!el || seenWins.has(el) || !shown(st, k)) return;
+      seenWins.add(el);
+      el.dispatchEvent(new CustomEvent('pudl:window-seen', { bubbles: true, detail: { key: k } }));
+    });
+  }
+
+  /* === Splitters between snapped windows (0.67.0) =========================
+     A splitter is drawn on a grid line wherever two snapped windows that
+     can be seen meet across it, as long as they share it, and moves that
+     line for every snapped window with an edge on it. Where a vertical and
+     a horizontal splitter cross inside both, as the four quarters do, a
+     handle moves both lines at once. Each splitter is a focusable
+     separator: the arrow keys move its line by a hundredth of the inner
+     area, a sixth with Shift, Home and End to its limits, and Enter or a
+     double-click returns the line to the grid. The elements are kept from
+     one apply to the next, so a drag or the keyboard's focus survives the
+     windows being laid out again. */
+
+  var splitEls = {};       // splitter id -> its element
+
+  function splitSegments(st) {
+    var seen = [];
+    st.open.forEach(function (k) {
+      if (!shown(st, k) || shownEdge(st, k)) return;
+      var p = effectivePlacement(st, k);
+      if (!p || p.mode === 'maximized' || !zoneFilled(p)) return;
+      seen.push({ key: k, c: cells(zoneFilled(p)) });
+    });
+    var lines = {};
+    ['x', 'y'].forEach(function (axis) {
+      /* Across x a window's left and right edges are cells 0 and 2 and it
+         spans cells 1 to 3; across y, its top and bottom are 1 and 3. */
+      var lo = axis === 'x' ? 0 : 1, hi = lo + 2, a0 = axis === 'x' ? 1 : 0, a1 = a0 + 2;
+      seen.forEach(function (a) {
+        seen.forEach(function (b) {
+          if (a === b || a.c[hi] !== b.c[lo] || a.c[hi] <= 0 || a.c[hi] >= 6) return;
+          var from = Math.max(a.c[a0], b.c[a0]), to = Math.min(a.c[a1], b.c[a1]);
+          if (from >= to) return;
+          var id = axis + a.c[hi];
+          (lines[id] = lines[id] || []).push({ from: from, to: to, before: a.key, after: b.key });
+        });
+      });
+    });
+    var out = [];
+    Object.keys(lines).forEach(function (id) {
+      var cur = null;
+      lines[id].sort(function (p, q) { return p.from - q.from; }).forEach(function (s) {
+        if (cur && s.from <= cur.to) {
+          cur.to = Math.max(cur.to, s.to);
+          if (cur.before.indexOf(s.before) < 0) cur.before.push(s.before);
+          if (cur.after.indexOf(s.after) < 0) cur.after.push(s.after);
+        } else {
+          cur = { axis: id[0], line: +id.slice(1), from: s.from, to: s.to, before: [s.before], after: [s.after] };
+          out.push(cur);
+        }
+      });
+    });
+    return out;
+  }
+
+  function splitterEl(id, cls) {
+    var el = splitEls[id];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = cls;
+      layer.insertBefore(el, ghost);
+      splitEls[id] = el;
+    }
+    return el;
+  }
+
+  function renderSplitters(st) {
+    var segs = splitSegments(st), keep = {};
+    var mins = segs.length ? gridMins(st) : {};
+    var zOf = function (k) { return +(wins[k] && wins[k].style.zIndex) || 0; };
+    var names = function (keys) { return keys.map(titleOf).join(text('splitter-and', ' and ')); };
+    segs.forEach(function (s) {
+      var id = s.axis + s.line + ':' + s.from + '-' + s.to;
+      keep[id] = true;
+      var el = splitterEl(id, 'win-splitter');
+      var other = s.axis === 'x' ? 'y' : 'x';
+      var at = linePos(st.grid, s.axis, s.line);
+      var n = Math.round(at * 100);
+      /* Written only where they change, since every change wakes whatever
+         watches the page, and this runs on every frame of a drag. */
+      var set = function (name, v) { if (el.getAttribute(name) !== v) el.setAttribute(name, v); };
+      var prop = function (name, v) { if (el.style.getPropertyValue(name) !== v) el.style.setProperty(name, v); };
+      set('role', 'separator');
+      if (el.tabIndex !== 0) el.tabIndex = 0;
+      set('aria-orientation', s.axis === 'x' ? 'vertical' : 'horizontal');
+      set('data-win-grid', s.axis + s.line);
+      prop('--split-at', String(at));
+      prop('--split-from', String(linePos(st.grid, other, s.from)));
+      prop('--split-to', String(linePos(st.grid, other, s.to)));
+      var z = String(Math.max.apply(null, s.before.concat(s.after).map(zOf)) + 1);
+      if (el.style.zIndex !== z) el.style.zIndex = z;
+      set('aria-valuenow', String(n));
+      /* The limits take a search each; they are worked out when a drag
+         ends, not on each of its frames. */
+      if (!layer.classList.contains('dragging') || !el.hasAttribute('aria-valuemin')) {
+        set('aria-valuemin', String(Math.round(clampLine(st.grid, mins, s.axis, s.line, 0) * 100)));
+        set('aria-valuemax', String(Math.round(clampLine(st.grid, mins, s.axis, s.line, 1) * 100)));
+      }
+      set('aria-valuetext', text('splitter-value', '{n}%').split('{n}').join(String(n)));
+      set('aria-label', text('splitter', 'Resize {before} and {after}')
+        .split('{before}').join(names(s.before)).split('{after}').join(names(s.after)));
+    });
+    segs.forEach(function (v) {
+      if (v.axis !== 'x') return;
+      segs.forEach(function (h) {
+        if (h.axis !== 'y' || !(v.from < h.line && h.line < v.to && h.from < v.line && v.line < h.to)) return;
+        var id = 'c' + v.line + ',' + h.line;
+        keep[id] = true;
+        var el = splitterEl(id, 'win-splitter-cross');
+        var set = function (name, val) { if (el.getAttribute(name) !== val) el.setAttribute(name, val); };
+        var prop = function (name, val) { if (el.style.getPropertyValue(name) !== val) el.style.setProperty(name, val); };
+        set('aria-hidden', 'true');
+        set('data-win-grid', 'x' + v.line + ' y' + h.line);
+        prop('--split-x', String(linePos(st.grid, 'x', v.line)));
+        prop('--split-y', String(linePos(st.grid, 'y', h.line)));
+        var z = String(Math.max.apply(null, v.before.concat(v.after, h.before, h.after).map(zOf)) + 1);
+        if (el.style.zIndex !== z) el.style.zIndex = z;
+      });
+    });
+    Object.keys(splitEls).forEach(function (id) {
+      if (keep[id]) return;
+      splitEls[id].remove();
+      delete splitEls[id];
+    });
+  }
+
+  /* The lines a splitter or a crossing moves, as [axis, line] pairs. */
+  function splitLines(el) {
+    return el.getAttribute('data-win-grid').split(' ').map(function (g) { return [g[0], +g.slice(1)]; });
+  }
+
+  /* The state as it stands, with a grid to change. */
+  function withGrid() {
+    var work = copy(state);
+    work.grid = copyGrid(state.grid);
+    return work;
+  }
+
+  function forgetLines(lines) {
+    var work = withGrid();
+    lines.forEach(function (l) { delete work.grid[l[0]][l[1]]; });
+    commit(work, false);
+  }
+
+  function onSplitterDown(e) {
+    var el = e.target.closest && e.target.closest('.win-splitter, .win-splitter-cross');
+    if (!el || e.button !== 0 || !layer.contains(el)) return;
+    e.preventDefault();
+    var lines = splitLines(el), r = innerRect(), mins = gridMins(state), work = withGrid();
+    lines.forEach(function (l) { pinLines(work.grid, state, l[0], l[1]); });
+    var lastX = e.clientX, lastY = e.clientY, frame = 0, movedAny = false;
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('dragging');
+    layer.classList.add('dragging');
+    function step() {
+      frame = 0;
+      lines.forEach(function (l) {
+        var f = l[0] === 'x' ? (lastX - r.left) / r.width : (lastY - r.top) / r.height;
+        work.grid[l[0]][l[1]] = clampLine(work.grid, mins, l[0], l[1], f);
+      });
+      var view = copy(work);
+      view.grid = copyGrid(work.grid);
+      apply(view);
+    }
+    function move(ev) {
+      lastX = ev.clientX; lastY = ev.clientY;
+      if (!movedAny && Math.abs(lastX - e.clientX) + Math.abs(lastY - e.clientY) < CLICK_PX) return;
+      movedAny = true;
+      if (!frame) frame = requestAnimationFrame(step);
+    }
+    function up() {
+      if (frame) { cancelAnimationFrame(frame); step(); }
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      el.classList.remove('dragging');
+      layer.classList.remove('dragging');
+      if (movedAny) commit(withGrid(), false);
+    }
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  }
+
+  function onSplitterKey(e) {
+    var el = e.target;
+    if (!el.classList || !el.classList.contains('win-splitter') || !layer.contains(el)) return;
+    var l = splitLines(el)[0], axis = l[0], i = l[1];
+    var back = axis === 'x' ? 'ArrowLeft' : 'ArrowUp', fwd = axis === 'x' ? 'ArrowRight' : 'ArrowDown';
+    var at = linePos(state.grid, axis, i), want;
+    if (e.key === back || e.key === fwd) want = at + (e.key === fwd ? 1 : -1) * (e.shiftKey ? 1 / 6 : LINE_STEP);
+    else if (e.key === 'Home') want = 0;
+    else if (e.key === 'End') want = 1;
+    else if (e.key === 'Enter') { e.preventDefault(); forgetLines([l]); return; }
+    else return;
+    e.preventDefault();
+    var work = withGrid();
+    pinLines(work.grid, state, axis, i);
+    work.grid[axis][i] = clampLine(work.grid, gridMins(state), axis, i, want);
+    commitSoon(work);
+  }
+
+  function onSplitterDoubleClick(e) {
+    var el = e.target.closest && e.target.closest('.win-splitter, .win-splitter-cross');
+    if (!el || !layer.contains(el)) return;
+    forgetLines(splitLines(el));
   }
 
   /* The window in front, the active one: top, unless top is hidden, in
@@ -1303,24 +1780,34 @@
 
   /* === Applying state to the page ======================================== */
 
+  /* Written only where a value changes (0.69.3): this runs for every window
+     whenever the windows are laid out, on every frame of a splitter's
+     drag among them, and each write wakes whatever watches the page. */
+  function styleProp(el, name, value) {
+    if (value == null) { if (el.style.getPropertyValue(name)) el.style.removeProperty(name); return; }
+    if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value);
+  }
+
   function setPlacement(el, p) {
-    el.setAttribute('data-win-mode', p.mode);
-    el.style.setProperty('--win-x', fmt(p.x));
-    el.style.setProperty('--win-y', fmt(p.y));
-    el.style.setProperty('--win-w', fmt(p.w));
-    el.style.setProperty('--win-h', fmt(p.h));
-    if (p.s != null) el.style.setProperty('--win-dock-size', fmt(p.s));
+    if (el.getAttribute('data-win-mode') !== p.mode) el.setAttribute('data-win-mode', p.mode);
+    styleProp(el, '--win-x', fmt(p.x));
+    styleProp(el, '--win-y', fmt(p.y));
+    styleProp(el, '--win-w', fmt(p.w));
+    styleProp(el, '--win-h', fmt(p.h));
+    if (p.s != null) styleProp(el, '--win-dock-size', fmt(p.s));
     /* A zone's rectangle, and a hairline on each side that meets another
        zone rather than the edge of the area. */
     if (p.mode === 'zone') {
-      el.style.setProperty('--zone-x', fmt(p.zone.x));
-      el.style.setProperty('--zone-y', fmt(p.zone.y));
-      el.style.setProperty('--zone-w', fmt(p.zone.w));
-      el.style.setProperty('--zone-h', fmt(p.zone.h));
-      el.style.setProperty('--zone-rule-e', p.zone.x + p.zone.w < 0.999 ? '1px' : '0px');
-      el.style.setProperty('--zone-rule-s', p.zone.y + p.zone.h < 0.999 ? '1px' : '0px');
+      /* Drawn on the grid's lines as they are now. */
+      var z = warped(drawGrid, p.zone), c = cells(p.zone);
+      styleProp(el, '--zone-x', String(z.x));
+      styleProp(el, '--zone-y', String(z.y));
+      styleProp(el, '--zone-w', String(z.w));
+      styleProp(el, '--zone-h', String(z.h));
+      styleProp(el, '--zone-rule-e', c[2] < 6 ? '1px' : '0px');
+      styleProp(el, '--zone-rule-s', c[3] < 6 ? '1px' : '0px');
     } else {
-      ['--zone-x', '--zone-y', '--zone-w', '--zone-h', '--zone-rule-e', '--zone-rule-s'].forEach(function (v) { el.style.removeProperty(v); });
+      ['--zone-x', '--zone-y', '--zone-w', '--zone-h', '--zone-rule-e', '--zone-rule-s'].forEach(function (v) { styleProp(el, v, null); });
     }
   }
 
@@ -1375,6 +1862,14 @@
     });
     normalizeDocks(st);
     roomRails = roomFor(st);
+    /* The grid's moved lines: those no snapped window uses are forgotten,
+       and those that squeeze a window are let back. The halves are drawn
+       by the stylesheet, from the middle line. */
+    pruneGrid(st);
+    settleGrid(st);
+    drawGrid = st.grid || null;
+    if (drawGrid && drawGrid.x[3] != null) layer.style.setProperty('--win-grid-x3', String(linePos(drawGrid, 'x', 3)));
+    else layer.style.removeProperty('--win-grid-x3');
     /* A window leaving the page says so first, however it was closed, so
        its content can tear down what it set up, and says why, so a project
        can tell a reader closing it from the address moving on. */
@@ -1416,15 +1911,19 @@
       setPlacement(el, effectivePlacement(st, k));
       el.toggleAttribute('data-win-restricted', restricted(k));
       labelHead(k);
-      el.hidden = isHidden(st, k);
+      var hide = isHidden(st, k);
+      if (el.hidden !== hide) el.hidden = hide;
       el.classList.toggle('active', k === front);
-      if (edge) el.setAttribute('data-win-edge', edge);
+      if (edge) { if (el.getAttribute('data-win-edge') !== edge) el.setAttribute('data-win-edge', edge); }
       else el.removeAttribute('data-win-edge');
       el.classList.toggle('win-collapsed', !!edge && !sharedEdge(edge) && !!st.min[k]);
       el.toggleAttribute('data-win-dock-shared', sharedEdge(edge));
       el.toggleAttribute('data-win-dock-peek', sharedEdge(edge) && railMode(st, edge) && dockPeek[edge] === k);
-      if (sharedEdge(edge)) el.style.setProperty('--win-dock-panel-size', ((st.place[k].s || DOCK_SIZE) * 100) + '%');
-      el.style.zIndex = String((edge ? zOrder.length : 0) + i + 1);
+      if (sharedEdge(edge)) styleProp(el, '--win-dock-panel-size', ((st.place[k].s || DOCK_SIZE) * 100) + '%');
+      /* Two apart, so a splitter can sit just above the windows it
+         divides and below the next window up. */
+      var z = String(2 * ((edge ? zOrder.length : 0) + i + 1));
+      if (el.style.zIndex !== z) el.style.zIndex = z;
     });
     setDocks(st);
     state = st;
@@ -1433,6 +1932,8 @@
     renderDockGroups();
     renderRows();
     syncPane();
+    renderSplitters(st);
+    announceSeen(st);
   }
 
   /* Every window button and dock tab is a real link to the state it
@@ -1444,33 +1945,38 @@
       setHref(mn, urlFor(minimizeToggled(state, k)));
       if (mn) {
         var ml = shownEdge(state, k) ? (state.min[k] ? text('expand', 'Expand') : text('collapse', 'Collapse')) : text('minimize', 'Minimize');
-        mn.setAttribute('aria-label', ml);
-        mn.setAttribute('title', ml);
+        setAttr(mn, 'aria-label', ml);
+        setAttr(mn, 'title', ml);
       }
       var closeButton = el.querySelector('[data-win-action="close"]');
-      if (closeButton) closeButton.hidden = requiredWindow(k);
+      if (closeButton && closeButton.hidden !== requiredWindow(k)) closeButton.hidden = requiredWindow(k);
       setHref(closeButton, urlFor(requiredWindow(k) ? state : closed(state, k)));
       var max = el.querySelector('[data-win-action="maximize"]');
       setHref(max, urlFor(maximizeToggled(state, k)));
       if (max) {
         var label = restricted(k) ? text('restore-floating', 'Restore to floating') : state.place[k].mode === 'floating' ? text('maximize', 'Maximize') : text('restore', 'Restore');
-        max.setAttribute('aria-disabled', String(restricted(k)));
-        max.setAttribute('aria-label', label);
-        max.setAttribute('title', label);
+        setAttr(max, 'aria-disabled', String(restricted(k)));
+        setAttr(max, 'aria-label', label);
+        setAttr(max, 'title', label);
       }
       var dock = el.querySelector('[data-win-action="dock"]');
       if (dock) {
-        dock.setAttribute('aria-disabled', String(restricted(k)));
+        setAttr(dock, 'aria-disabled', String(restricted(k)));
         var isDocked = !!dockEdge(state.place[k]);
         setHref(dock, urlFor(docked(state, k, isDocked ? null : 'bottom')));
         var dl = isDocked ? text('undock', 'Undock') : text('dock', 'Dock at the bottom');
-        dock.setAttribute('aria-label', dl);
-        dock.setAttribute('title', dl);
+        setAttr(dock, 'aria-label', dl);
+        setAttr(dock, 'title', dl);
       }
     });
   }
 
-  function setHref(a, href) { if (a && a.tagName === 'A') a.setAttribute('href', href); }
+  /* An attribute set only when its value differs (0.69.3), since setting
+     it to the value it has still tells everything watching the page that
+     it changed, and the window buttons are set again whenever the windows
+     are laid out. */
+  function setAttr(el, name, value) { if (el.getAttribute(name) !== value) el.setAttribute(name, value); }
+  function setHref(a, href) { if (a && a.tagName === 'A') setAttr(a, 'href', href); }
 
   /* A host may export a chosen state without changing the reader's workspace.
      The share address is independent of the title bar's Open as a page link. */
@@ -1507,22 +2013,35 @@
   }
 
   /* The dock has a tab for each top-level window only. */
+  /* The dock of open windows keeps its tabs from one layout to the next
+     (0.69.3), each found by its window's key, moved only when out of
+     place, and changed only where it differs; before, every tab was made
+     again whenever the windows were laid out. */
   function renderDocks() {
     var front = active(state);
     var topRoot = front ? rootOf(state, front) : null;
     document.querySelectorAll('[data-win-dock]').forEach(function (dock) {
-      dock.textContent = '';
-      state.open.forEach(function (k) {
-        if (parentOf(state, k)) return;
-        if (dock.hasAttribute('data-win-dock-omit-docked') && shownEdge(state, k)) return;
-        var a = document.createElement('a');
-        a.className = 'win-tab' + (state.min[k] ? ' minimized' : '');
-        a.href = urlFor(tabbed(state, k));
-        a.setAttribute('data-win-tab', k);
-        if (k === topRoot) a.setAttribute('aria-current', 'true');
-        windowMark(a, k);
-        a.title = state.min[k] ? text('minimized', '{title} (minimized)').split('{title}').join(fullTitle(k)) : fullTitle(k);
-        dock.appendChild(a);
+      var have = new Map();
+      Array.prototype.forEach.call(dock.children, function (a) {
+        var k = a.getAttribute('data-win-tab');
+        if (k && !have.has(k)) have.set(k, a); else a.remove();
+      });
+      var want = state.open.filter(function (k) {
+        return !parentOf(state, k) && !(dock.hasAttribute('data-win-dock-omit-docked') && shownEdge(state, k));
+      });
+      have.forEach(function (a, k) { if (want.indexOf(k) < 0) { a.remove(); have.delete(k); } });
+      want.forEach(function (k, i) {
+        var a = have.get(k);
+        if (!a) {
+          a = document.createElement('a');
+          a.setAttribute('data-win-tab', k);
+        }
+        if (dock.children[i] !== a) dock.insertBefore(a, dock.children[i] || null);
+        var cls = 'win-tab' + (state.min[k] ? ' minimized' : '');
+        if (a.className !== cls) a.className = cls;
+        setAttr(a, 'href', urlFor(tabbed(state, k)));
+        if (k === topRoot) setAttr(a, 'aria-current', 'true'); else if (a.hasAttribute('aria-current')) a.removeAttribute('aria-current');
+        windowMark(a, k, state.min[k] ? text('minimized', '{title} (minimized)').split('{title}').join(fullTitle(k)) : fullTitle(k));
       });
     });
   }
@@ -1530,39 +2049,53 @@
   /* A list row whose link opens a window follows that window: the row of the
      window in front is marked current, and each open child gets a row of
      its own beneath its parent's, which goes when the child closes. */
+  /* Only the rows whose link opens a window are looked at, not every row
+     in the page, and a child's row is kept from one layout to the next and
+     changed only where it differs (0.69.3); a long list no longer costs
+     every window that is raised. */
   function renderRows() {
-    document.querySelectorAll('.md-row-child[data-win-child]').forEach(function (r) { r.remove(); });
     var front = active(state);
     var topRoot = front ? rootOf(state, front) : null;
-    document.querySelectorAll('.md-row').forEach(function (row) {
-      var link = row.querySelector('a[data-win-open]');
-      if (!link) return;
+    var stale = new Set(document.querySelectorAll('.md-row-child[data-win-child]'));
+    document.querySelectorAll('.md-row a[data-win-open]').forEach(function (link) {
+      var row = link.closest('.md-row');
+      if (!row || row.classList.contains('md-row-child') || row.__pudlSeen === renderRows.pass) return;
+      row.__pudlSeen = renderRows.pass;
       var key = link.getAttribute('data-win-open');
       var current = key === topRoot && !isHidden(state, key);
       row.classList.toggle('active', current);
-      if (current) link.setAttribute('aria-current', 'true');
-      else link.removeAttribute('aria-current');
+      if (current) setAttr(link, 'aria-current', 'true');
+      else if (link.hasAttribute('aria-current')) link.removeAttribute('aria-current');
       /* A menu panel lists places, and a child window is not one, so a
          panel's rows are marked but gain no child rows. */
       if (state.open.indexOf(key) < 0 || row.closest('[popover]')) return;
 
       var after = row;
       childrenOf(state, key).forEach(function (c) {
-        var child = document.createElement('div');
-        child.className = 'md-row md-row-child' + (c === front ? ' active' : '');
-        child.setAttribute('data-win-child', c);
-        var a = document.createElement('a');
-        a.className = 'md-item';
-        a.href = urlFor(raised(state, c));
-        a.setAttribute('data-win-tab', c);
-        if (c === front) a.setAttribute('aria-current', 'true');
-        a.textContent = fullTitle(c);
-        child.appendChild(a);
-        after.after(child);
+        var child = after.nextElementSibling;
+        if (!(child && child.getAttribute('data-win-child') === c)) {
+          child = document.createElement('div');
+          child.setAttribute('data-win-child', c);
+          var made = document.createElement('a');
+          made.className = 'md-item';
+          made.setAttribute('data-win-tab', c);
+          child.appendChild(made);
+          after.after(child);
+        }
+        stale.delete(child);
+        var cls = 'md-row md-row-child' + (c === front ? ' active' : '');
+        if (child.className !== cls) child.className = cls;
+        var a = child.firstElementChild;
+        setAttr(a, 'href', urlFor(raised(state, c)));
+        if (c === front) setAttr(a, 'aria-current', 'true'); else if (a.hasAttribute('aria-current')) a.removeAttribute('aria-current');
+        setText(a, fullTitle(c));
         after = child;
       });
     });
+    renderRows.pass++;
+    stale.forEach(function (r) { r.remove(); });
   }
+  renderRows.pass = 1;
 
   /* In a master-detail layout narrow enough to show one pane at a time, the
      windows are the detail pane: it shows while any window the reader
@@ -1680,9 +2213,11 @@
   /* The title bar's spoken name, which carries the window's title. */
   function labelHead(key) {
     var head = wins[key] && wins[key].querySelector('.win-head');
-    if (head) head.setAttribute('aria-label', (restricted(key) ? text('head-restricted', 'Window: {title}. Placement is fixed at this workspace width. Shift F10 opens the window menu.') : text('head',
+    if (!head) return;
+    var label = (restricted(key) ? text('head-restricted', 'Window: {title}. Placement is fixed at this workspace width. Shift F10 opens the window menu.') : text('head',
       'Window: {title}. Arrow keys move it, Shift with arrow keys resizes it, Enter maximizes or restores it.')
-      ).split('{title}').join(titleOf(key)));
+      ).split('{title}').join(titleOf(key));
+    if (head.getAttribute('aria-label') !== label) head.setAttribute('aria-label', label);
   }
 
   /* Gives a window a new title, which the title bar's spoken name, its
@@ -2609,10 +3144,12 @@
       var bottom = state.open.some(function (k) { return shownEdge(state, k) === 'bottom'; }) ? B : (DOCK_SIZE * 100) + '%';
       g = ['0px', 'calc(100% - ' + bottom + ')', '100%', bottom];
     } else {
-      var z = ZONES[snap];
+      /* The zone as the grid's lines are drawn now, so a window dragged
+         beside a moved line previews the space it will take. */
+      var z = warped(state.grid, zoneOf(ZONES[snap]));
       var iw = '(100% - ' + L + ' - ' + R + ')', ih = '(100% - ' + T + ' - ' + B + ')';
-      g = ['calc(' + L + ' + ' + iw + ' * ' + z[0] + ' / 6)', 'calc(' + T + ' + ' + ih + ' * ' + z[1] + ' / 6)',
-           'calc(' + iw + ' * ' + (z[2] - z[0]) + ' / 6)', 'calc(' + ih + ' * ' + (z[3] - z[1]) + ' / 6)'];
+      g = ['calc(' + L + ' + ' + iw + ' * ' + z.x + ')', 'calc(' + T + ' + ' + ih + ' * ' + z.y + ')',
+           'calc(' + iw + ' * ' + z.w + ')', 'calc(' + ih + ' * ' + z.h + ')'];
     }
     ghost.style.left = g[0]; ghost.style.top = g[1];
     ghost.style.width = g[2]; ghost.style.height = g[3];
@@ -3020,7 +3557,10 @@
     document.addEventListener('click', onClick);
     document.addEventListener('submit', onSubmit);
     layer.addEventListener('pointerdown', onPointerDown);
+    layer.addEventListener('pointerdown', onSplitterDown);
     layer.addEventListener('dblclick', onDoubleClick);
+    layer.addEventListener('dblclick', onSplitterDoubleClick);
+    layer.addEventListener('keydown', onSplitterKey);
     layer.addEventListener('focusin', onFocusIn);
     layer.addEventListener('keydown', function (e) {
       var head = e.target.classList && e.target.classList.contains('win-head') ? e.target : null;
@@ -3135,6 +3675,21 @@
       shareURL: shareURL,
       copyLink: copyLink,
       effectivePlacement: function (key) { return effectivePlacement(state, key); },
+      /* Whether a window can be seen now, and whether it has been seen
+         since it opened. */
+      shown: function (key) { return shown(state, key); },
+      /* Moves a line of the zones' grid, "x" or "y" and 1 to 5, to a share
+         of the inner area, within its limits, or with null returns it to
+         the grid. */
+      grid: function (axis, line, position) {
+        if ((axis !== 'x' && axis !== 'y') || !(line >= 1 && line <= 5)) return;
+        if (position == null) { forgetLines([[axis, line]]); return; }
+        var work = withGrid();
+        pinLines(work.grid, state, axis, line);
+        work.grid[axis][line] = clampLine(work.grid, gridMins(state), axis, line, Number(position));
+        commit(work, false);
+      },
+      seen: function (key) { return !!wins[key] && seenWins.has(wins[key]); },
       reload: reload,
       update: update,
       state: function () { return copy(state); }
