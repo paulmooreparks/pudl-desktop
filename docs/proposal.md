@@ -1,25 +1,24 @@
 # PUDL Desktop showcase proposal
 
-This document explores a desktop shell at `pudl.parkscomputing.com`, backed by a resource-oriented service that provides files, applications, jobs, and other operating-system-like facilities. It is a proposal for Paul Parks, researched on 3 October 2026. Paul accepted it on 4 October 2026 with the decisions in the next section, which override anything later in the document that disagrees with them.
+This document explores a desktop shell at `pudl.parkscomputing.com`, backed by a resource-oriented service that provides files, applications, jobs, and other operating-system-like facilities. It was researched on 3 October 2026 and accepted on 4 October 2026 with the decisions in the next section, which override anything later in the document that disagrees with them.
 
 ## Decisions, 4 October 2026
 
-Paul decided these on 4 October 2026, after a review of the proposal.
+These were decided on 4 October 2026, after a review of the proposal.
 
 - **The project goes ahead**, as PUDL Desktop, a separate repository with its own version, consuming tagged PUDL releases.
 - **The service is written in Go.**
-- **Documents are Markdown first.** Paul writes Markdown almost exclusively, and HTML only when he must, so the desktop treats Markdown as the document format and HTML as the way Markdown is presented. One of the project's theses is to show how good Markdown-first editing can be, and how Markdown documents can work together, in ways that are new or that exist already but have never been shown in one place. The section on Markdown below sets this out.
+- **Documents are Markdown first.** The documents this desktop is for are written almost entirely in Markdown, with HTML only where it is unavoidable, so the desktop treats Markdown as the document format and HTML as the way Markdown is presented. One of the project's theses is to show how good Markdown-first editing can be, and how Markdown documents can work together, in ways that are new or that exist already but have never been shown in one place. The section on Markdown below sets this out.
 - **Stage 1's Preview shows Markdown, HTML and images.** PDF moves to stage 3.
-- **Paul's own code comes in under Apache-2.0.** Code he wrote for Parks Computing, the terminal first, is licensed under Apache-2.0 as it is brought into this repository, so the project has one licence for its own code. Third-party libraries keep their own licences, which cannot be changed, and each one's licence file is kept beside it; xterm.js, CodeMirror and goldmark are MIT, which an Apache-2.0 project can include. A dependency under any licence other than a permissive one compatible with Apache-2.0 needs Paul's decision before it is added.
-- **The terminal is based on the one Parks Computing already has**, adapted to the desktop's resource service in place of the site's filesystem. It stays a thin command shell over desktop resources, and it reaches them through the same links and forms the browser follows, so that it is the second client that proves the hypermedia is real. There is no separate vendor JSON media type.
+- **Code brought in from existing PUDL sites comes in under Apache-2.0.** Each such piece, the terminal first, is licensed under Apache-2.0 as it is brought into this repository, so the project has one licence for its own code. Third-party libraries keep their own licences, which cannot be changed, and each one's licence file is kept beside it; xterm.js, CodeMirror and goldmark are MIT, which an Apache-2.0 project can include. A dependency under any licence other than a permissive one compatible with Apache-2.0 needs an explicit decision before it is added.
+- **The terminal is based on an existing PUDL site's terminal**, adapted to the desktop's resource service in place of the site's filesystem. It stays a thin command shell over desktop resources, and it reaches them through the same links and forms the browser follows, so that it is the second client that proves the hypermedia is real. There is no separate vendor JSON media type.
 - **Data Workbench starts on the server**, running its queries in the service's SQLite and returning HTML tables. Browser engines such as DuckDB-Wasm, a data grid and a chart library come later, each after a prototype shows it is needed.
 - **The public temporary workspace has fixed limits before any design work**: text-only writes, a small quota, a short expiry, and no ZIP import in stage 1.
-- **Tela and Awan Saya are unrelated** to this project. The desktop does not integrate with them, and the comparison with them later in this document can be ignored.
-- **The phone form follows YAVCHN first and parkscomputing.com second**, since both already work well on a phone and on a desktop.
+- **The phone form follows existing PUDL sites** that already work well on a phone and on a desktop.
 - **The first design task is the walk-through** that takes one Markdown file from creation through editing, a conflict, export and deletion, through both the browser's HTML forms and the terminal, before any code is written.
 - **PUDL Desktop is also PUDL's conformance harness.** Its coverage manifest maps to the conformance checklists in the PUDL specification, so each scenario it runs is evidence for a checklist item.
 
-Paul added these on 5 October 2026.
+These were added on 5 October 2026.
 
 - **The first priority is PUDL Studio, a development tool for applets and sites**, and the rest of PUDL Desktop is built with it. The Markdown work already done keeps its value and resumes after Studio. Studio takes its development model from Visual Basic 6: arrange the interface directly, attach behaviour to it, run it at once, and ship what was built. It owes nothing else to VB6 and is designed from PUDL outward:
   - The palette is organised by PUDL's grammar, raised for what is pressed, sunken for input and flat for display.
@@ -30,20 +29,20 @@ Paul added these on 5 October 2026.
   - Building a project checks it against PUDL's rules, and a gap Studio finds in PUDL goes back to PUDL or the specification as a change.
   - Code a reader writes runs only in a sandbox outside the desktop's origin.
 - **Studio is driven by a machine-readable list of PUDL's components**, giving each one's markup, attributes, variants, states and grammar category. The list starts in the web repository, which already holds the web contract it formalises; its platform-neutral part moves into the specification when a second implementation needs it.
-Paul agreed these on 6 October 2026.
+These were agreed on 6 October 2026.
 
-- **Studio, PS for short, is a set of windows working on one project** kept in the workspace with its revisions: Project, Canvas, Palette, Properties, Code, Menus, Theme, Problems, Run and Publish. Parks Computing's Theme Studio becomes the Theme window, previewing a theme on the project being built rather than on a fixed specimen. Parks Computing's editor and file browser are the starting point for Code and Project, brought in under Apache-2.0 as the terminal is.
+- **Studio, PS for short, is a set of windows working on one project** kept in the workspace with its revisions: Project, Canvas, Palette, Properties, Code, Menus, Theme, Problems, Run and Publish. An existing Theme Studio applet becomes the Theme window, previewing a theme on the project being built rather than on a fixed specimen. An existing editor and file browser are the starting point for Code and Project, brought in under Apache-2.0 as the terminal is.
 - **The order of work** is: the windowed shell; layout in the specification and PUDL; a first PS of Project, Canvas, Palette, Properties and Run, with saving; then Code and Menus; Theme; Problems; Publish.
 - **Code written in PS runs only on a separate origin**, `pudl-run.parkscomputing.com`, served by the same service. (It was first named run.pudl.parkscomputing.com; Cloudflare's certificate covers only one level below parkscomputing.com, so it is pudl-run.)
 - **The code editor is CodeMirror 6**, bundled once into a committed file, the project's only build step.
-- **What comes from Parks Computing, and how.** Theme Studio, its preview page and the text-diff engine come as they are, with the games and toys. The vendored CodeMirror 6.43 bundle comes as it is, so there is no build step after all. The editor, the file manager and the terminal share a client-side filesystem over a tree loaded into the browser, which would give the browser powers the other clients lack, so their data layer stays behind: Files is the server's folder pages with the file browser's tree and path bar as an enhancement, the Editor is the server's edit form with CodeMirror over its text box and saving still a form post against a base revision, and the Terminal follows links and forms. Each file brought in gets the Apache-2.0 header.
+- **What comes from existing applets, and how.** Theme Studio, its preview page and the text-diff engine come as they are, with the games and toys. The vendored CodeMirror 6.43 bundle comes as it is, so there is no build step after all. The editor, the file manager and the terminal share a client-side filesystem over a tree loaded into the browser, which would give the browser powers the other clients lack, so their data layer stays behind: Files is the server's folder pages with the file browser's tree and path bar as an enhancement, the Editor is the server's edit form with CodeMirror over its text box and saving still a form post against a base revision, and the Terminal follows links and forms. Each file brought in gets the Apache-2.0 header.
 - **PS is completely drivable by AI, before anything else is built on it.** An AI agent can do everything a person can do in PS, and see everything a person can see, with no operation that only the browser's interface can perform. The section below sets out how.
 
-- **The desktop has a Windowed view and a Classic view, as parkscomputing.com does.** Windowed is the default: the shell with its menu bar, movable windows and taskbar. Classic is the fallback, made of the same server-rendered pages without the shell, and it is what a browser without scripting, a terminal following links, or a reader who prefers it gets. Every window shows one of those pages, so each window's content has an address that also works as a Classic page. The topbar switches between the two, and a reader's choice of Classic is remembered.
+- **The desktop has a Windowed view and a Classic view.** Windowed is the default: the shell with its menu bar, movable windows and taskbar. Classic is the fallback, made of the same server-rendered pages without the shell, and it is what a browser without scripting, a terminal following links, or a reader who prefers it gets. Every window shows one of those pages, so each window's content has an address that also works as a Classic page. The topbar switches between the two, and a reader's choice of Classic is remembered.
 
 ## PS for AI agents
 
-This section is a proposal of 6 October 2026, after Paul's decision that PS is completely drivable by AI. Paul accepted it the same day, with all three open choices decided as recommended: a headless browser on the server renders the canvas for an agent, the MCP server runs inside the PS service, and a person and an agent may share a workspace. Everything rests on the service as a kernel whose interface is REST as Fielding defines it, hypermedia with no out-of-band contract, which the browser, the terminal and agents all go through.
+This section is a proposal of 6 October 2026, after the decision that PS is completely drivable by AI. It was accepted the same day, with all three open choices decided as recommended: a headless browser on the server renders the canvas for an agent, the MCP server runs inside the PS service, and a person and an agent may share a workspace. Everything rests on the service as a kernel whose interface is REST as Fielding defines it, hypermedia with no out-of-band contract, which the browser, the terminal and agents all go through.
 
 **One interface, three clients.** Every operation in PS is a resource on the server, reached by a link and changed by a form, as the walkthrough's files already are. The browser's windows, the terminal and an AI agent are three clients of the same hypermedia, and none of them has an operation the others lack. A Canvas drag in the browser is a form post that inserts a component, just as the agent's is. The test for every feature is that a client which only follows links and fills forms, as the walkthrough's Go tests do, can do it without a browser.
 
@@ -65,11 +64,11 @@ I recommend building **PUDL Desktop** as a separate application with a small, re
 
 The main risk is scope. A browser desktop can easily become an unfinished operating system, office suite, package manager, and hosting platform at once. The project will succeed if applications share a modest set of well-defined services and each release completes a useful workflow. A large catalog of windows containing unrelated websites would demonstrate much less of PUDL.
 
-The canonical [Architectural Principles](<C:/Users/paul/OneDrive/Documents/Architectural Principles.md>) apply. The current [PUDL contract](https://github.com/paulmooreparks/pudl/blob/main/docs/CONTRACT.md), [menu conventions](https://github.com/paulmooreparks/pudl/blob/main/docs/MENU-BARS.md), and [persistent sidebar contract](https://github.com/paulmooreparks/pudl/blob/main/docs/PERSISTENT-SIDEBAR.md) are the starting point. This proposal does not change those contracts.
+The canonical Architectural Principles apply. The current [PUDL contract](https://github.com/paulmooreparks/pudl/blob/main/docs/CONTRACT.md), [menu conventions](https://github.com/paulmooreparks/pudl/blob/main/docs/MENU-BARS.md), and [persistent sidebar contract](https://github.com/paulmooreparks/pudl/blob/main/docs/PERSISTENT-SIDEBAR.md) are the starting point. This proposal does not change those contracts.
 
 ## What would make this worth building
 
-Parks Computing already demonstrates a site that grows into a workspace. YAVCHN demonstrates repeated reader instances, live content, and navigation within a mounted application. PUDL Desktop could show what happens when the workspace itself is the product.
+Existing PUDL sites already demonstrate a site that grows into a workspace, and a reader application with repeated reader instances, live content, and navigation within a mounted application. PUDL Desktop could show what happens when the workspace itself is the product.
 
 The strongest demonstration is continuity. A user generates barcodes from a CSV file, opens the output in Preview, adds a chart to a report, and exports a bundle. Another user opens a sample project, edits a Markdown document, inspects its revisions, and restores a saved workspace. Every application uses the same file identities, open/save experience, command conventions, and job reporting.
 
@@ -143,7 +142,7 @@ Useful shell additions include a command palette, Open With, recent documents, d
 
 ## The kernel and its boundaries
 
-I would start with one Go service, server-rendered HTML, a SQLite metadata database, and an object directory for file bytes. These are proposed implementation choices, not requirements for PUDL. Go aligns with YAVCHN's current server and permits a straightforward self-hosted binary. ASP.NET Core would also fit Paul's experience and could reuse Parks Computing server infrastructure, but porting its whole content engine would bring unrelated responsibilities.
+I would start with one Go service, server-rendered HTML, a SQLite metadata database, and an object directory for file bytes. These are proposed implementation choices, not requirements for PUDL. Go permits a straightforward self-hosted binary. ASP.NET Core would also fit and could reuse existing server infrastructure, but porting a whole site's content engine would bring unrelated responsibilities.
 
 Keep shell, service, and application modules in a new repository, provisionally `pudl-desktop`. Keep PUDL itself independently versioned. One deployable can contain the initial modules without introducing a network service for each capability. A bounded worker process can run background transformations. Storage and worker interfaces can later change without leaking into the public resource model.
 
@@ -219,7 +218,7 @@ Sharing an address must not silently publish private files. A recipient may need
 
 For the public showcase, I recommend read-only example projects plus an explicit **Start a temporary workspace** action. Starting creates a bounded server-backed workspace with a displayed expiry. The user can export it or delete it. This exercises the real kernel without requiring registration before the first useful interaction.
 
-Do not copy Parks Computing's current privacy promise into this mode. Its public home filesystem is browser-local; a server-backed desktop workspace would upload the user's documents. The UI needs an obvious storage location and retention statement before the first upload. A separate browser-local scratch area can come later, with its own label and export path.
+Do not copy the privacy promise of a site whose public home filesystem is browser-local into this mode; a server-backed desktop workspace would upload the user's documents. The UI needs an obvious storage location and retention statement before the first upload. A separate browser-local scratch area can come later, with its own label and export path.
 
 An account mode would retain work across devices. A self-hosted mode would give the operator a durable private installation. These modes should share the resource model. Differences in available actions, quota, and retention can be represented by capabilities and policy, without making every application contain three storage implementations.
 
@@ -229,25 +228,25 @@ The first public service should run only registered operations with bounded inpu
 
 These controls are directly relevant to the proposed features. A public desktop with file uploads, importers, and a terminal invites workloads far beyond clicking a demo. A separate worker process with a constrained filesystem and network policy is preferable to executing transformations inside the HTTP process. Arbitrary native execution is a separate product decision.
 
-## What to reuse from the two sites
+## What to reuse from existing sites
 
-The local source review found the following useful starting points. These observations describe the checked-out code on the research date, not a fresh verification of either deployed site.
+The local source review found the following useful starting points in two existing PUDL sites, a general site with a set of applets and a reader application. These observations describe the checked-out code on the research date, not a fresh verification of either deployed site.
 
 | Source | Reuse | Adaptation required |
 | --- | --- | --- |
-| Parks Computing Files, Terminal, and Editor | Shared filesystem experience, xterm.js adapter, CodeMirror adapter, open/save flows, menus, and help | Replace site-specific storage and page routes with kernel resource adapters; preserve the useful interaction behavior |
-| Parks Computing barcode tools | Generation, scanning, flash cards, and related forms | Add shared-file input/output and job integration; keep camera activation explicit |
-| Parks Computing Sudoku, Conway, and Dice | Working small applications with different interaction styles | Give saved games, rules, and exported patterns durable document formats |
-| Parks Computing Theme Studio and Diff | Immediate PUDL relevance and multi-pane workflows | Add theme files, saved comparisons, and links into document revisions |
-| YAVCHN readers | Stable reader identity separate from document assignment, split reading/discussion views, and source adapters | Reuse lifecycle and navigation patterns for documents and inspection tools |
-| YAVCHN Settings and Classic view | A usable page representation alongside the desktop | Make each application useful outside a window and keep settings addressable |
-| YAVCHN background tools | Periodic refresh, filtering, and user-profile inspection patterns | Generalize job/notification presentation instead of copying HN-specific concepts |
+| A site's Files, Terminal, and Editor applets | Shared filesystem experience, xterm.js adapter, CodeMirror adapter, open/save flows, menus, and help | Replace site-specific storage and page routes with kernel resource adapters; preserve the useful interaction behavior |
+| A site's barcode tools | Generation, scanning, flash cards, and related forms | Add shared-file input/output and job integration; keep camera activation explicit |
+| A site's Sudoku, Conway, and Dice applets | Working small applications with different interaction styles | Give saved games, rules, and exported patterns durable document formats |
+| A site's Theme Studio and Diff applets | Immediate PUDL relevance and multi-pane workflows | Add theme files, saved comparisons, and links into document revisions |
+| A reader application's readers | Stable reader identity separate from document assignment, split reading/discussion views, and source adapters | Reuse lifecycle and navigation patterns for documents and inspection tools |
+| A reader application's Settings and Classic view | A usable page representation alongside the desktop | Make each application useful outside a window and keep settings addressable |
+| A reader application's background tools | Periodic refresh, filtering, and user-profile inspection patterns | Generalize job/notification presentation instead of copying source-specific concepts |
 
-Useful local pointers are Parks Computing's `Application/parkscomputing-engine/wwwroot/js/{applets,sitefs,files,terminal,editor}.js` and YAVCHN's README and reader code. Parks Computing's editor explicitly uses a vendored CodeMirror bundle; its public home storage currently uses localStorage. Neither implementation should be treated as a binary-file service ready for this project.
+The site's editor uses a vendored CodeMirror bundle, and its public home storage currently uses localStorage. Neither implementation should be treated as a binary-file service ready for this project.
 
-Extract host-neutral adapters only after mapping their dependencies. An applet that assumes a global `pcSiteFs` object or a particular `/page/...` URL cannot be made reusable merely by copying its script into a new catalog. Write a small adapter around the actual resource operations rather than accumulating compatibility globals in the shell.
+Extract host-neutral adapters only after mapping their dependencies. An applet that assumes a site-wide global filesystem object or a particular `/page/...` URL cannot be made reusable merely by copying its script into a new catalog. Write a small adapter around the actual resource operations rather than accumulating compatibility globals in the shell.
 
-YAVCHN's repository carries an MIT license. Parks Computing has an `Application/LICENSE` with MIT terms and a Microsoft copyright header; that does not by itself establish that every site-specific asset and contribution was intentionally covered. Since Paul owns the projects, clarify the intended license and attribution when extracting his modules, while retaining third-party notices. This is a packaging task before redistribution, not a reason to discard the existing work.
+The reader application's repository carries an MIT license. The other site has a license file with MIT terms and a third-party copyright header, which does not by itself establish that every site-specific asset and contribution was intentionally covered. Clarify the intended license and attribution when extracting modules, while retaining third-party notices. This is a packaging task before redistribution, not a reason to discard the existing work.
 
 ## Application portfolio
 
@@ -277,13 +276,13 @@ Preview should use renderers as engines and retain PUDL's controls around them. 
 
 **Draw** would provide diagrams, shapes, connectors, layers, alignment, and SVG/PNG export. It would exercise property inspectors, color controls, drag operations, and document undo. A small, coherent vector editor is more useful than embedding a complete whiteboard whose menus and storage bypass the desktop.
 
-**Planner** could combine a task list, calendar, simple project board, and reminders. Keep tasks and events as typed resources with explicit dates and time zones. A shared “Open related document” relation would make it part of the desktop. Do not rebuild Andoneer's portfolio model here; a personal task tool can be intentionally much smaller.
+**Planner** could combine a task list, calendar, simple project board, and reminders. Keep tasks and events as typed resources with explicit dates and time zones. A shared “Open related document” relation would make it part of the desktop. Do not rebuild a portfolio-management system here; a personal task tool can be intentionally much smaller.
 
 **Notebook** could combine Markdown, SQL, charts, and generated outputs in one document. This is an attractive second-stage demonstration because it composes the editor, data engine, and jobs. Define reproducibility through input revisions and saved parameters before adding executable general-purpose code cells.
 
 **Media tools** could include image crop/resize, waveform inspection, and simple audio playback. Use local processing when it meets the task and disclose any server upload. Video editing and arbitrary codec conversion should wait until the worker model, file limits, and licensing inventory are mature.
 
-**Reader** could borrow YAVCHN's split content/metadata arrangement for documentation, saved web extracts, feeds, or e-books. Keep imported web content sanitized and respect source terms. An arbitrary-web “browser” is not a dependable application: many sites prohibit framing, and a server proxy introduces access-control, content, and network-abuse concerns. [MDN frame-ancestors](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors).
+**Reader** could borrow the reader application's split content/metadata arrangement for documentation, saved web extracts, feeds, or e-books. Keep imported web content sanitized and respect source terms. An arbitrary-web “browser” is not a dependable application: many sites prohibit framing, and a server proxy introduces access-control, content, and network-abuse concerns. [MDN frame-ancestors](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors).
 
 **Automation Studio** could let users connect resource operations, preview a plan, and run a bounded workflow. Blockly is a possible visual editor, but block generation is not a sandbox. Start with the same registered job types used by the terminal, with no arbitrary `eval`. An optional future AI assistant should propose these visible operations and link to their results; it should not become a hidden second command channel.
 
@@ -297,13 +296,13 @@ I would avoid leading with DOS emulation or an entire Linux VM. Both are impress
 
 ## Open source engines and licensing findings
 
-PUDL itself is Apache-2.0. I recommend Apache-2.0 for the new shell and service as well, subject to Paul's choice, with MIT/BSD/Apache dependencies preferred. “Compatible” below means a plausible dependency under that distribution policy with required notices retained. It is not a claim that all transitive packages, fonts, codecs, example files, or application assets have been cleared.
+PUDL itself is Apache-2.0. I recommend Apache-2.0 for the new shell and service as well, subject to the project's decision, with MIT/BSD/Apache dependencies preferred. “Compatible” below means a plausible dependency under that distribution policy with required notices retained. It is not a claim that all transitive packages, fonts, codecs, example files, or application assets have been cleared.
 
 The links in this table were checked on the research date. They establish upstream license families and, where linked, integration characteristics. Before vendoring, select an exact release or commit, record its checksums and dependencies, preserve its notices, and review that actual distribution. Branch URLs are research evidence, not recommended production dependency pins.
 
 | Candidate | Verified upstream license | Proposed use | Integration judgment |
 | --- | --- | --- | --- |
-| [xterm.js](https://raw.githubusercontent.com/xtermjs/xterm.js/master/LICENSE) | MIT | Terminal display and input | Reuse the Parks adapter; xterm.js does not provide a shell or process isolation |
+| [xterm.js](https://raw.githubusercontent.com/xtermjs/xterm.js/master/LICENSE) | MIT | Terminal display and input | Reuse the existing site's adapter; xterm.js does not provide a shell or process isolation |
 | [CodeMirror](https://raw.githubusercontent.com/codemirror/dev/main/LICENSE) | MIT | Editor and query input | Strong fit for a native PUDL application; use the existing theme adapter |
 | [ProseMirror](https://github.com/ProseMirror/prosemirror-view) | MIT | Writer's document engine | Good candidate; the GitHub view repository reports its move to the author's forge, so pin the maintained upstream rather than assuming the archived mirror is current |
 | [PDF.js](https://github.com/mozilla/pdf.js/blob/master/LICENSE) | Apache-2.0 | PDF rendering and text navigation | Good candidate with significant viewer integration and accessibility work |
@@ -319,15 +318,15 @@ The links in this table were checked on the research date. They establish upstre
 | [markdown-it](https://raw.githubusercontent.com/markdown-it/markdown-it/master/LICENSE) | MIT | Markdown preview where a client parser is needed | Reuse one parsing policy across applications; disable or sanitize unsafe HTML |
 | [DOMPurify](https://raw.githubusercontent.com/cure53/DOMPurify/main/LICENSE) | Apache-2.0 terms in the inspected license | Sanitizing supported browser-rendered markup | Useful defense at rendering boundaries; it is not permission to trust arbitrary scripts |
 | [fflate](https://raw.githubusercontent.com/101arrowz/fflate/master/LICENSE) | MIT | ZIP import/export and workspace bundles | Bound expansion and validate archive paths; archive support is not a storage policy |
-| [bwip-js](https://raw.githubusercontent.com/metafloor/bwip-js/master/LICENSE) | MIT | Barcode generation | Prefer the existing working Parks integration where suitable; audit included engines and assets |
-| Parks' vendored zxing-wasm and ZXing-C++ | MIT wrapper and Apache-2.0 C++ engine in the inspected local license files | Barcode scanning | Reuse the tested adapter and retain both licenses; verify exact bundled artifacts |
+| [bwip-js](https://raw.githubusercontent.com/metafloor/bwip-js/master/LICENSE) | MIT | Barcode generation | Prefer the existing site's working integration where suitable; audit included engines and assets |
+| The existing site's vendored zxing-wasm and ZXing-C++ | MIT wrapper and Apache-2.0 C++ engine in the inspected local license files | Barcode scanning | Reuse the tested adapter and retain both licenses; verify exact bundled artifacts |
 | [Kenney game assets](https://kenney.nl/support) | CC0 for assets covered by its asset-page policy | Original-feeling games without proprietary art | Keep each selected pack's own license and provenance; do not assume the policy covers unrelated downloads |
 
 DuckDB-Wasm's upstream documentation explicitly describes browser SQL over CSV, JSON, and Parquet, along with differences from native DuckDB and runtime extension fetching. The recommendation is to start with a limited, self-hosted set of capabilities, disable unapproved remote extension/data access, and measure resource consumption. A browser worker improves responsiveness but does not make arbitrary code a trusted application. [DuckDB-Wasm documentation](https://github.com/duckdb/duckdb-wasm), [MDN Web Workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers).
 
 ### Attractive choices that need a different decision
 
-[Excalidraw](https://raw.githubusercontent.com/excalidraw/excalidraw/master/LICENSE) is MIT, but its supported embedding route is a React component and it brings a substantial application UI. Under the current no-SPA-framework direction, I would prefer Konva for the native drawing application. A separately hosted Excalidraw integration could still be useful if Paul explicitly accepts that architectural exception; an iframe does not make the exception disappear. [Excalidraw integration documentation](https://docs.excalidraw.com/docs/@excalidraw/excalidraw/integration).
+[Excalidraw](https://raw.githubusercontent.com/excalidraw/excalidraw/master/LICENSE) is MIT, but its supported embedding route is a React component and it brings a substantial application UI. Under the current no-SPA-framework direction, I would prefer Konva for the native drawing application. A separately hosted Excalidraw integration could still be useful if the project explicitly accepts that architectural exception; an iframe does not make the exception disappear. [Excalidraw integration documentation](https://docs.excalidraw.com/docs/@excalidraw/excalidraw/integration).
 
 [tldraw's current SDK license](https://raw.githubusercontent.com/tldraw/tldraw/main/LICENSE.md) restricts production use without other terms and includes license enforcement provisions. It is not a default permissive dependency for this public desktop. Do not rely on recollections of an older license or on MIT examples from the project.
 
@@ -406,11 +405,8 @@ A particular trap is inventing a second application runtime. First inventory wha
 | Browser constraints are mistaken for bugs to bypass | Framing, filesystem permissions, and reserved shortcuts differ | Use documented APIs and honest fallbacks rather than undocumented browser behavior |
 | Dependency updates consume the project | Rich engines have their own release and security cycles | Maintain a short audited list, exact pins, and upgrade tests |
 | Strict REST becomes cosmetic terminology | RPC calls can be disguised behind nouns | Use the API Explorer and a second client to prove resource discovery and legal transitions |
-| It duplicates Tela or Andoneer | Both already occupy parts of Paul's platform portfolio | Reuse their boundaries where appropriate and keep this project's purpose visible |
 
-Tela's checked-out design describes a connectivity fabric with tunnels, agents, hubs, and browser-mediated access; Awan Saya builds service infrastructure above it. PUDL Desktop should not reimplement those tunnels. If a later desktop connects to private machines, a Tela adapter is a plausible integration to investigate. That is an inference from the current local design, not a claim that an appropriate API already exists.
-
-The positive case remains strong. Most of the hard windowing and interaction work already exists, the two sites offer working applications to extract, and mature engines cover several expensive domains. The new work can concentrate on coherence, resource ownership, and a few flagship workflows. The desktop would also provide a demanding integration environment for PUDL releases that benefits both existing sites.
+The positive case remains strong. Most of the hard windowing and interaction work already exists, existing PUDL sites offer working applications to extract, and mature engines cover several expensive domains. The new work can concentrate on coherence, resource ownership, and a few flagship workflows. The desktop would also provide a demanding integration environment for PUDL releases that benefits every site already using PUDL.
 
 ## A delivery sequence with stopping points
 
@@ -444,4 +440,4 @@ I would proceed with PUDL Desktop, a separate Apache-2.0 shell/service project, 
 
 I would approve engine reuse for xterm.js and CodeMirror immediately, then run bounded integration spikes for the grid/query pair and PDF.js. Pick Data Workbench as the first new large application. Carry over a small game and Theme Studio early, but do not make an office suite, package marketplace, real host shell, or Linux emulator a launch requirement.
 
-Before implementation, resolve the public workspace expiry and quotas, whether accounts belong in the first public release, the exact hypermedia representation contract, and the license scope of extracted Parks Computing modules. The first design exercise should walk one file from creation through edit, conflict, export, and deletion using both HTML forms and a terminal client. If that workflow is coherent, the proposed kernel has a useful foundation.
+Before implementation, resolve the public workspace expiry and quotas, whether accounts belong in the first public release, the exact hypermedia representation contract, and the license scope of modules extracted from existing sites. The first design exercise should walk one file from creation through edit, conflict, export, and deletion using both HTML forms and a terminal client. If that workflow is coherent, the proposed kernel has a useful foundation.

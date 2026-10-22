@@ -20,8 +20,8 @@ import (
 
 // The applet packages installed on this desktop: each a folder under the
 // applets directory (-applets) with an applet.json, the one file read here,
-// as the package design describes (Architecture/applet-packages-design.md
-// in the parkscomputing repo). From the manifests the desktop writes what
+// as the package format describes (the README of the pudl-applet-packages
+// repo). From the manifests the desktop writes what
 // a host writes for each applet: its define() in /applets/registry.js, its
 // page at /app/{name}, its window app-{name}, and its entry in the Applets
 // menu. The folder is read again when a manifest or a page body changes. A

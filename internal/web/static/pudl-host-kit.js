@@ -35,7 +35,7 @@
                                         or null where it offers none
      pudlHost.actions                   run(ref, input): runs an action an
                                         applet of the host publishes, such
-                                        as parks.dice/roll@1, through the
+                                        as example.dice/roll@1, through the
                                         host's own broker, opening a window
                                         where the action needs one, and
                                         resolves to its output (optional)

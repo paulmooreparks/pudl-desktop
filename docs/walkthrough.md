@@ -2,7 +2,7 @@
 
 This walk-through follows a single Markdown file through its whole life in PUDL Desktop: a workspace is started, the file is created and written, read in another application, caught in a conflict, exported, deleted and restored. Each step is shown twice, once through the browser's HTML links and forms and once through the terminal, because the proposal's test of the design is that both clients work from the same representations and arrive at the same result.
 
-No code exists yet. Where this document makes a choice the proposal left open, it says so. Paul accepted all six of those choices, as proposed, on 4 October 2026; they are listed at the end. The addresses in the examples show the shape of the design; clients find real addresses in representations and never build them.
+No code exists yet. Where this document makes a choice the proposal left open, it says so. All six of those choices were accepted, as proposed, on 4 October 2026; they are listed at the end. The addresses in the examples show the shape of the design; clients find real addresses in representations and never build them.
 
 ## The rules the walk-through relies on
 
@@ -90,7 +90,7 @@ Reloading the desktop brings back every window as the address describes it, each
 
 ## What the terminal needs
 
-The Parks Computing terminal divides cleanly at its commands, which reach the outside world only through the input and output object a command is given. Below that line, though, its file layer assumes the whole tree is in memory and returns every result synchronously: path resolution, directory walks, completion and the search for runnable scripts all read the tree directly, and the working directory is a node in it rather than a path. That works for the site's small tree and cannot work for a service of revisions, drafts and jobs.
+The existing site terminal that the desktop's terminal starts from divides cleanly at its commands, which reach the outside world only through the input and output object a command is given. Below that line, though, its file layer assumes the whole tree is in memory and returns every result synchronously: path resolution, directory walks, completion and the search for runnable scripts all read the tree directly, and the working directory is a node in it rather than a path. That works for the site's small tree and cannot work for a service of revisions, drafts and jobs.
 
 The desktop's terminal therefore keeps the terminal's line editor, history, completion engine, parser, pipes, scripts, pager, text editor and generic commands, and replaces the file layer with an asynchronous one.
 
@@ -101,22 +101,22 @@ The desktop's terminal therefore keeps the terminal's line editor, history, comp
 - `upload` opens the browser's file picker before anything else is awaited, because the picker must open while the keypress still counts as the reader's action.
 - The site's own commands, such as `tags`, `guide` and the game launchers, move to an extras file, as the text commands already have. The desktop adds `export`, `jobs`, `trash`, `restore`, `log` for a file's revisions and `diff` between two revisions.
 
-None of `terminal.js`, `sitefs.js`, `terminal-text.js` or `terminal.css` has a licence header, and the only licence file in the Parks Computing repository is MIT text with a Microsoft copyright that looks like template boilerplate. Paul wrote every commit to the terminal, and on 4 October 2026 he licensed his code for it under Apache-2.0, the project's licence. Each file copied into this repository gets an Apache-2.0 header saying so. The vendored xterm.js stays under its MIT licence, and its licence file goes with it.
+None of the terminal's source files has a licence header, and the only licence file in the repository it comes from is MIT text with a third-party copyright that looks like template boilerplate. The terminal's code was licensed under Apache-2.0, the project's licence, on 4 October 2026. Each file copied into this repository gets an Apache-2.0 header saying so. The vendored xterm.js stays under its MIT licence, and its licence file goes with it.
 
 ## On a phone
 
-The desktop follows YAVCHN, which already works well on a phone.
+The desktop follows the layout of an existing PUDL reader application that already works well on a phone.
 
 - At 640 pixels wide or less, the workspace shows one pane at a time: Places and Files, or the windows. Windows on a narrow screen are maximised, except windows sized by their content, which PUDL already lets float.
 - The taskbar runs along the foot of the screen across both panes, with a button that switches between Places and the windows and arrows that scroll its tabs when they overflow.
 - The desktop's height follows the browser's visible viewport, so the keyboard and the browser's own bars never hide the taskbar, and the taskbar keeps clear of the screen's safe areas.
-- The Editor's source and preview become one pane at a time on a narrow screen, chosen by a Source, Preview and Split selector, as YAVCHN's Article, Discussion and Split selector works.
+- The Editor's source and preview become one pane at a time on a narrow screen, chosen by a Source, Preview and Split selector, as that reader application's Article, Discussion and Split selector works.
 
-Several of these are general enough to belong in PUDL rather than in each site: a pane switch that is separate from minimising every window, a taskbar placed across both panes, scrolling arrows for an overflowing dock, the visible-viewport height, a documented compact title bar, and a way for a site to say which address parameters are its own window state. YAVCHN's PUDL proposal already asks for the first two. The desktop should consume them from a PUDL release rather than carry its own copies.
+Several of these are general enough to belong in PUDL rather than in each site: a pane switch that is separate from minimising every window, a taskbar placed across both panes, scrolling arrows for an overflowing dock, the visible-viewport height, a documented compact title bar, and a way for a site to say which address parameters are its own window state. An existing proposal to PUDL already asks for the first two. The desktop should consume them from a PUDL release rather than carry its own copies.
 
 ## Decisions
 
-Paul accepted each of these, as proposed here, on 4 October 2026.
+Each of these was accepted, as proposed here, on 4 October 2026.
 
 1. **The Markdown dialect** is CommonMark with GitHub's tables, task lists, strikethrough and autolinks, and YAML front matter. Footnotes, wiki-style `[[links]]` and any syntax for including one document in another are left out of stage 1.
 2. **Two addresses for every file**, a path address for reading and linking and an identity address for windows, with old path addresses redirecting after a rename.

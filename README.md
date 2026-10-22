@@ -4,7 +4,7 @@ PUDL Desktop is a desktop of windows in the browser, built with [PUDL](https://g
 
 Nothing is built yet. The project is in design.
 
-- [The proposal](docs/proposal.md) sets out what the desktop is for, its architecture, the applications it starts with, and the decisions Paul Parks made on 4 October 2026, which come first in it.
+- [The proposal](docs/proposal.md) sets out what the desktop is for, its architecture, the applications it starts with, and the decisions made on 4 October 2026, which come first in it.
 - [The walk-through](docs/walkthrough.md) takes one Markdown file through creation, editing, a conflict, export and deletion, in the browser and in the terminal, before any code is written. It is the first design task the proposal calls for.
 
 ## Applet packages
